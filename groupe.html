@@ -1,201 +1,188 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Groupe - KykyChat</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Groupe test</title>
   <style>
     body {
       margin: 0;
+      font-family: sans-serif;
+      background-color: #fff8d5; /* jaune banane */
       display: flex;
+      flex-direction: column;
       height: 100vh;
-      font-family: Arial, sans-serif;
-      background: #f0f2f5;
     }
-    .sidebar {
-      width: 200px;
-      background: #2f3542;
-      color: white;
+
+    /* Top bar style WhatsApp */
+    .topbar {
+      background-color: white;
       padding: 10px;
-      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
     }
-    .chat {
-      flex: 1;
+
+    .topbar img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin: 0 10px;
+    }
+
+    .topbar .info {
+      flex-grow: 1;
+    }
+
+    .topbar .info .title {
+      font-weight: bold;
+    }
+
+    .topbar .info .subtitle {
+      font-size: 12px;
+      color: gray;
+    }
+
+    .topbar .icons {
+      display: flex;
+      gap: 10px;
+      font-size: 20px;
+    }
+
+    .encryption-info {
+      background-color: #fff3cd;
+      color: #856404;
+      font-size: 13px;
+      text-align: center;
+      padding: 10px;
+    }
+
+    .messages {
+      flex-grow: 1;
+      padding: 15px;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
     }
-    .messages {
-      flex: 1;
-      padding: 10px;
-      overflow-y: auto;
-      background: #ffffff;
+
+    .message {
+      align-self: flex-end;
+      background-color: #dcf8c6;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      max-width: 70%;
+      position: relative;
     }
-    .input-area {
+
+    .message .time {
+      font-size: 10px;
+      color: gray;
+      position: absolute;
+      bottom: 2px;
+      right: 5px;
+    }
+
+    .input-bar {
       display: flex;
       padding: 10px;
-      background: #dfe4ea;
+      background-color: white;
+      border-top: 1px solid #ccc;
     }
-    .input-area input {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      border-radius: 5px;
+
+    .input-bar input {
+      flex-grow: 1;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 14px;
     }
-    .input-area button {
-      margin-left: 10px;
-      padding: 10px;
+
+    .input-bar button {
+      background-color: #25d366;
       border: none;
-      background: #25D366;
       color: white;
-      border-radius: 5px;
+      padding: 0 16px;
+      margin-left: 8px;
+      border-radius: 50%;
+      font-size: 18px;
       cursor: pointer;
-    }
-    .message {
-      margin: 5px 0;
-    }
-    .message span {
-      font-weight: bold;
-    }
-    .log {
-      font-size: 12px;
-      background: #1e272e;
-      color: #a4b0be;
-      padding: 5px;
-      height: 100px;
-      overflow-y: auto;
-    }
-    .user-item {
-      margin: 5px 0;
-      cursor: pointer;
-    }
-    .popup {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: white;
-      padding: 20px;
-      border: 2px solid #333;
-      z-index: 10;
-      display: none;
     }
   </style>
 </head>
 <body>
-  <div class="sidebar">
-    <h3>Utilisateurs</h3>
-    <div id="userList"></div>
-  </div>
 
-  <div class="chat">
-    <div class="messages" id="messages"></div>
-
-    <div class="input-area">
-      <input type="text" id="msgInput" placeholder="Tape ton message ici...">
-      <button onclick="sendMessage()">Envoyer</button>
+  <!-- Top bar -->
+  <div class="topbar">
+    <span>&larr;</span>
+    <img src="https://i.imgur.com/SdZRnls.jpeg" alt="Groupe"/>
+    <div class="info">
+      <div class="title">Groupe test</div>
+      <div class="subtitle">Vous</div>
     </div>
-
-    <div class="log" id="logTerminal"></div>
+    <div class="icons">
+      📹 ☎️ ⋮
+    </div>
   </div>
 
-  <div class="popup" id="profilePopup"></div>
+  <!-- Info chiffrement -->
+  <div class="encryption-info">
+    🔒 Les messages et les appels sont chiffrés de bout en bout. Seules les personnes prenant part à cette discussion peuvent les lire, les écouter ou les partager. En savoir plus.
+  </div>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <!-- Messages -->
+  <div class="messages" id="messages"></div>
 
-  <script>
+  <!-- Input -->
+  <div class="input-bar">
+    <input type="text" id="messageInput" placeholder="Message" />
+    <button onclick="sendMessage()">➤</button>
+  </div>
+
+  <!-- Firebase + JS -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
       databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
       projectId: "kykychat-24c7f",
-      storageBucket: "kykychat-24c7f.firebaseapp.com",
+      storageBucket: "kykychat-24c7f.firebasestorage.app",
       messagingSenderId: "342562811927",
       appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const messagesRef = ref(db, "messages");
 
-    const pseudo = localStorage.getItem("pseudo");
-    if (!pseudo) window.location.href = "index.html";
-
-    const msgInput = document.getElementById("msgInput");
     const messagesDiv = document.getElementById("messages");
-    const log = document.getElementById("logTerminal");
-    const userListDiv = document.getElementById("userList");
-    const profilePopup = document.getElementById("profilePopup");
-
-    function logMsg(txt) {
-      const time = new Date().toLocaleTimeString();
-      log.innerHTML += `[${time}] ${txt}<br>`;
-      log.scrollTop = log.scrollHeight;
-    }
 
     function sendMessage() {
-      const msg = msgInput.value.trim();
-      if (msg === "") return;
-      const ref = db.ref("messages").push();
-      ref.set({
-        pseudo: pseudo,
-        text: msg,
-        time: Date.now()
-      }, () => {
-        logMsg("Message envoyé.");
-        msgInput.value = "";
-      });
-    }
-
-    db.ref("messages").on("child_added", (snap) => {
-      const data = snap.val();
-      db.ref("users/" + data.pseudo).once("value", (userSnap) => {
-        const color = userSnap.val()?.color || "#000";
-        const msg = document.createElement("div");
-        msg.className = "message";
-        msg.innerHTML = `<span style="color:${color}">${data.pseudo}</span>: ${data.text}`;
-        messagesDiv.appendChild(msg);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      });
-    });
-
-    // Online status
-    const presenceRef = db.ref("presence/" + pseudo);
-    presenceRef.set(true);
-    presenceRef.onDisconnect().remove();
-
-    // User list
-    db.ref("presence").on("value", (snap) => {
-      userListDiv.innerHTML = "";
-      const onlineUsers = snap.val() || {};
-      for (let user in onlineUsers) {
-        const userDiv = document.createElement("div");
-        userDiv.className = "user-item";
-        userDiv.textContent = user;
-        userDiv.onclick = () => showProfile(user);
-        userListDiv.appendChild(userDiv);
+      const input = document.getElementById("messageInput");
+      const text = input.value.trim();
+      if (text !== "") {
+        push(messagesRef, {
+          sender: "Vous",
+          text,
+          timestamp: new Date().toISOString()
+        });
+        input.value = "";
       }
-    });
-
-    // Profil popup
-    function showProfile(user) {
-      db.ref("users/" + user).once("value", (snap) => {
-        const data = snap.val();
-        if (!data) return;
-        profilePopup.innerHTML = `
-          <h3>Profil de ${user}</h3>
-          <p><b>Couleur:</b> <span style="color:${data.color}">${data.color}</span></p>
-          <button onclick="closePopup()">Fermer</button>
-        `;
-        profilePopup.style.display = "block";
-      });
     }
 
-    function closePopup() {
-      profilePopup.style.display = "none";
-    }
-
-    window.addEventListener("beforeunload", () => {
-      presenceRef.remove();
+    onChildAdded(messagesRef, (snapshot) => {
+      const data = snapshot.val();
+      const msgDiv = document.createElement("div");
+      msgDiv.classList.add("message");
+      msgDiv.innerHTML = `
+        ${data.text}
+        <div class="time">${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+      `;
+      messagesDiv.appendChild(msgDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
   </script>
 </body>
