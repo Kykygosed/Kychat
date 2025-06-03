@@ -8,13 +8,12 @@
     body {
       margin: 0;
       font-family: sans-serif;
-      background-color: #fff8d5; /* jaune banane */
+      background-color: #fff8d5;
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
 
-    /* Top bar style WhatsApp */
     .topbar {
       background-color: white;
       padding: 10px;
@@ -66,13 +65,24 @@
     }
 
     .message {
-      align-self: flex-end;
       background-color: #dcf8c6;
       border-radius: 8px;
       padding: 8px 10px;
       margin-bottom: 8px;
       max-width: 70%;
       position: relative;
+      word-wrap: break-word;
+    }
+
+    .message.you {
+      align-self: flex-end;
+      background-color: #dcf8c6;
+    }
+
+    .message.other {
+      align-self: flex-start;
+      background-color: #ffffff;
+      border: 1px solid #ccc;
     }
 
     .message .time {
@@ -121,7 +131,7 @@
       <div class="subtitle">Vous</div>
     </div>
     <div class="icons">
-      📹 ☎️ ⋮
+      ⋮
     </div>
   </div>
 
@@ -135,7 +145,7 @@
 
   <!-- Input -->
   <div class="input-bar">
-    <input type="text" id="messageInput" placeholder="Message" />
+    <input type="text" id="messageInput" placeholder="Message" onkeydown="handleKey(event)" />
     <button onclick="sendMessage()">➤</button>
   </div>
 
@@ -149,7 +159,7 @@
       authDomain: "kykychat-24c7f.firebaseapp.com",
       databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
       projectId: "kykychat-24c7f",
-      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      storageBucket: "kykychat-24c7f.appspot.com",
       messagingSenderId: "342562811927",
       appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
@@ -160,12 +170,15 @@
 
     const messagesDiv = document.getElementById("messages");
 
+    // Nom du sender par défaut
+    const currentUser = "Vous";
+
     function sendMessage() {
       const input = document.getElementById("messageInput");
       const text = input.value.trim();
       if (text !== "") {
         push(messagesRef, {
-          sender: "Vous",
+          sender: currentUser,
           text,
           timestamp: new Date().toISOString()
         });
@@ -173,10 +186,18 @@
       }
     }
 
+    function handleKey(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+
     onChildAdded(messagesRef, (snapshot) => {
       const data = snapshot.val();
       const msgDiv = document.createElement("div");
       msgDiv.classList.add("message");
+      msgDiv.classList.add(data.sender === currentUser ? "you" : "other");
       msgDiv.innerHTML = `
         ${data.text}
         <div class="time">${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
