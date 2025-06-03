@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Groupe - KykyChat</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+    }
+    .sidebar {
+      width: 200px;
+      background: #2f3542;
+      color: white;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    .chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      background: #ffffff;
+    }
+    .input-area {
+      display: flex;
+      padding: 10px;
+      background: #dfe4ea;
+    }
+    .input-area input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+    }
+    .input-area button {
+      margin-left: 10px;
+      padding: 10px;
+      border: none;
+      background: #25D366;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .message {
+      margin: 5px 0;
+    }
+    .message span {
+      font-weight: bold;
+    }
+    .log {
+      font-size: 12px;
+      background: #1e272e;
+      color: #a4b0be;
+      padding: 5px;
+      height: 100px;
+      overflow-y: auto;
+    }
+    .user-item {
+      margin: 5px 0;
+      cursor: pointer;
+    }
+    .popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 2px solid #333;
+      z-index: 10;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h3>Utilisateurs</h3>
+    <div id="userList"></div>
+  </div>
+
+  <div class="chat">
+    <div class="messages" id="messages"></div>
+
+    <div class="input-area">
+      <input type="text" id="msgInput" placeholder="Tape ton message ici...">
+      <button onclick="sendMessage()">Envoyer</button>
+    </div>
+
+    <div class="log" id="logTerminal"></div>
+  </div>
+
+  <div class="popup" id="profilePopup"></div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.firebaseapp.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const pseudo = localStorage.getItem("pseudo");
+    if (!pseudo) window.location.href = "index.html";
+
+    const msgInput = document.getElementById("msgInput");
+    const messagesDiv = document.getElementById("messages");
+    const log = document.getElementById("logTerminal");
+    const userListDiv = document.getElementById("userList");
+    const profilePopup = document.getElementById("profilePopup");
+
+    function logMsg(txt) {
+      const time = new Date().toLocaleTimeString();
+      log.innerHTML += `[${time}] ${txt}<br>`;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function sendMessage() {
+      const msg = msgInput.value.trim();
+      if (msg === "") return;
+      const ref = db.ref("messages").push();
+      ref.set({
+        pseudo: pseudo,
+        text: msg,
+        time: Date.now()
+      }, () => {
+        logMsg("Message envoyé.");
+        msgInput.value = "";
+      });
+    }
+
+    db.ref("messages").on("child_added", (snap) => {
+      const data = snap.val();
+      db.ref("users/" + data.pseudo).once("value", (userSnap) => {
+        const color = userSnap.val()?.color || "#000";
+        const msg = document.createElement("div");
+        msg.className = "message";
+        msg.innerHTML = `<span style="color:${color}">${data.pseudo}</span>: ${data.text}`;
+        messagesDiv.appendChild(msg);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      });
+    });
+
+    // Online status
+    const presenceRef = db.ref("presence/" + pseudo);
+    presenceRef.set(true);
+    presenceRef.onDisconnect().remove();
+
+    // User list
+    db.ref("presence").on("value", (snap) => {
+      userListDiv.innerHTML = "";
+      const onlineUsers = snap.val() || {};
+      for (let user in onlineUsers) {
+        const userDiv = document.createElement("div");
+        userDiv.className = "user-item";
+        userDiv.textContent = user;
+        userDiv.onclick = () => showProfile(user);
+        userListDiv.appendChild(userDiv);
+      }
+    });
+
+    // Profil popup
+    function showProfile(user) {
+      db.ref("users/" + user).once("value", (snap) => {
+        const data = snap.val();
+        if (!data) return;
+        profilePopup.innerHTML = `
+          <h3>Profil de ${user}</h3>
+          <p><b>Couleur:</b> <span style="color:${data.color}">${data.color}</span></p>
+          <button onclick="closePopup()">Fermer</button>
+        `;
+        profilePopup.style.display = "block";
+      });
+    }
+
+    function closePopup() {
+      profilePopup.style.display = "none";
+    }
+
+    window.addEventListener("beforeunload", () => {
+      presenceRef.remove();
+    });
+  </script>
+</body>
+</html>
