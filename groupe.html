@@ -161,6 +161,27 @@
 
     const pseudo = localStorage.getItem("pseudo");
     if (!pseudo) window.location.href = "index.html";
+    // Vérifie si "admin" existe, sinon l'ajoute avec false
+firebase.database().ref("users/" + pseudo).once("value").then(snapshot => {
+  const userData = snapshot.val();
+
+  if (!userData) {
+    console.warn("Utilisateur non trouvé dans Firebase.");
+    return;
+  }
+
+  // Si la clé "admin" est absente, on l’ajoute avec false
+  if (userData.admin === undefined) {
+    firebase.database().ref("users/" + pseudo + "/admin").set(false)
+      .then(() => {
+        console.log(`Clé "admin" ajoutée à ${pseudo} (false par défaut).`);
+      })
+      .catch(error => {
+        console.error("Erreur lors de l'ajout de la clé admin :", error);
+      });
+  }
+});
+
 
     let userColor = "#000";
 
