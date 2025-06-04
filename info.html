@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Liste des utilisateurs</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: #128C7E;
+      margin-bottom: 30px;
+    }
+
+    .user-card {
+      background: white;
+      padding: 15px 20px;
+      margin-bottom: 15px;
+      border-radius: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .username {
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .admin-badge {
+      background-color: #C8F7C5;
+      color: #2E7D32;
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-size: 12px;
+      margin-left: 10px;
+    }
+
+    .admin-toggle {
+      padding: 4px 8px;
+      background: #128C7E;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .admin-toggle:hover {
+      background: #0d6e61;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Utilisateurs inscrits</h1>
+    <div id="userList"></div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const db = firebase.database();
+    const userListDiv = document.getElementById("userList");
+
+    const currentUser = localStorage.getItem("pseudo");
+    let isAdmin = false;
+
+    // Vérifie si l'utilisateur connecté est admin
+    firebase.database().ref("users/" + currentUser).once("value", snap => {
+      if (snap.exists() && snap.val().admin === true) {
+        isAdmin = true;
+      }
+    });
+
+    // Affiche tous les utilisateurs
+    firebase.database().ref("users").on("value", snapshot => {
+      userListDiv.innerHTML = "";
+
+      snapshot.forEach(childSnap => {
+        const user = childSnap.val();
+        const username = childSnap.key;
+
+        const card = document.createElement("div");
+        card.className = "user-card";
+
+        const name = document.createElement("div");
+        name.className = "username";
+        name.style.color = user.color || "#000";
+        name.textContent = username;
+
+        if (user.admin) {
+          const badge = document.createElement("span");
+          badge.className = "admin-badge";
+          badge.textContent = "admin";
+          name.appendChild(badge);
+        }
+
+        card.appendChild(name);
+
+        // Si on est admin, on peut modifier le statut des autres
+        if (isAdmin && username !== currentUser) {
+          const toggle = document.createElement("button");
+          toggle.className = "admin-toggle";
+          toggle.textContent = user.admin ? "Retirer admin" : "Donner admin";
+
+          toggle.onclick = () => {
+            const newStatus = !user.admin;
+            firebase.database().ref("users/" + username + "/admin").set(newStatus);
+          };
+
+          card.appendChild(toggle);
+        }
+
+        userListDiv.appendChild(card);
+      });
+    });
+  </script>
+</body>
+</html>
