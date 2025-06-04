@@ -1,105 +1,105 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Le groupe commu</title>
+  <meta charset="UTF-8">
+  <title>KykyChat</title>
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
-      background-color: #fff176; /* jaune banane */
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
+      background-color: #FFEB3B; /* jaune banane */
+      font-family: Arial, sans-serif;
     }
-    .top-bar {
-      background-color: #4caf50;
-      color: white;
-      padding: 10px;
+
+    .topbar {
+      height: 60px;
+      background-color: #ffffff;
       display: flex;
       align-items: center;
-      font-size: 18px;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 20px;
+      border-bottom: 1px solid #ccc;
     }
-    .top-bar img {
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      margin-right: 10px;
-    }
-    .messages {
-      flex: 1;
+
+    #messages {
       padding: 10px;
-      overflow-y: auto;
       display: flex;
       flex-direction: column;
+      gap: 10px;
+      height: calc(100vh - 120px);
+      overflow-y: auto;
     }
+
     .message {
-      max-width: 70%;
-      margin-bottom: 10px;
-      padding: 8px 12px;
-      border-radius: 10px;
+      max-width: 60%;
+      padding: 10px;
+      border-radius: 15px;
       position: relative;
       word-wrap: break-word;
     }
-    .message.own {
+
+    .me {
       align-self: flex-end;
-      background-color: #d0f8ce;
+      background-color: #dcf8c6;
     }
-    .message.other {
+
+    .other {
       align-self: flex-start;
-      background-color: #ffffff;
-      color: black;
-      border: 1px solid #ccc;
+      background-color: white;
     }
+
     .author {
+      font-size: 14px;
       font-weight: bold;
-      font-size: 12px;
       margin-bottom: 4px;
     }
+
     .timestamp {
-      font-size: 10px;
-      text-align: right;
+      font-size: 12px;
+      color: gray;
       margin-top: 4px;
-      color: #666;
     }
-    .input-area {
+
+    .bottombar {
+      height: 60px;
       display: flex;
-      padding: 10px;
-      background-color: white;
+      align-items: center;
+      padding: 0 10px;
+      background-color: #ffffff;
       border-top: 1px solid #ccc;
     }
-    .input-area input {
+
+    #inputMessage {
       flex: 1;
       padding: 10px;
-      border: 1px solid #ccc;
       border-radius: 20px;
+      border: 1px solid #ccc;
       outline: none;
     }
-    .input-area button {
+
+    #sendBtn {
       margin-left: 10px;
-      background-color: #4caf50;
-      border: none;
+      background-color: #25D366;
       color: white;
-      padding: 10px;
+      border: none;
+      padding: 10px 16px;
       border-radius: 50%;
       cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div class="top-bar">
-    <img src="https://cdn-icons-png.flaticon.com/512/25/25694.png" alt="icon" />
-    Le groupe commu
-  </div>
-  <div class="messages" id="messages"></div>
-  <div class="input-area">
-    <input type="text" id="messageInput" placeholder="Message" />
-    <button onclick="sendMessage()">📨</button>
+  <div class="topbar">KykyChat</div>
+  <div id="messages"></div>
+  <div class="bottombar">
+    <input type="text" id="inputMessage" placeholder="Écris ton message...">
+    <button id="sendBtn">➤</button>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -114,69 +114,66 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const pseudo = localStorage.getItem("pseudo") || "Vous";
-    const userColor = localStorage.getItem("color") || getRandomColor();
-    localStorage.setItem("pseudo", pseudo);
-    localStorage.setItem("color", userColor);
+    const pseudo = localStorage.getItem("pseudo");
+    if (!pseudo) window.location.href = "index.html";
 
-    function getRandomColor() {
-      const letters = "0123456789ABCDEF";
-      let color = "#";
-      for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-      }
-      return color;
-    }
+    let userColor = "#000";
 
-    function sendMessage() {
-      const input = document.getElementById("messageInput");
-      const message = input.value.trim();
-      if (message === "") return;
-      const timestamp = new Date().toLocaleString();
+    // Récupère la couleur du pseudo
+    firebase.database().ref("users/" + pseudo).once("value", snap => {
+      const data = snap.val();
+      if (data && data.color) userColor = data.color;
+    });
+
+    const messagesDiv = document.getElementById("messages");
+    const input = document.getElementById("inputMessage");
+    const sendBtn = document.getElementById("sendBtn");
+
+    // Envoyer un message
+    sendBtn.onclick = () => {
+      const text = input.value.trim();
+      if (!text) return;
+
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
       db.ref("messages").push({
-        author: pseudo,
-        color: userColor,
-        text: message,
-        timestamp,
-        views: {}
+        pseudo: pseudo,
+        message: text,
+        time: timestamp
       });
+
       input.value = "";
-    }
+    };
 
-    db.ref("messages").on("child_added", (snapshot) => {
-      const msg = snapshot.val();
-      const msgId = snapshot.key;
-      const container = document.getElementById("messages");
-      const div = document.createElement("div");
-      const isOwn = msg.author === pseudo;
+    // Affichage des messages
+    db.ref("messages").on("child_added", snap => {
+      const data = snap.val();
+      const bubble = document.createElement("div");
+      bubble.classList.add("message");
 
-      if (!isOwn && (!msg.views || !msg.views[pseudo])) {
-        db.ref(`messages/${msgId}/views/${pseudo}`).set(true);
+      if (data.pseudo === pseudo) {
+        bubble.classList.add("me");
+        bubble.innerHTML = `
+          <div>${data.message}</div>
+          <div class="timestamp">${data.time}</div>
+        `;
+      } else {
+        bubble.classList.add("other");
+
+        // Récupère la couleur de l'auteur
+        firebase.database().ref("users/" + data.pseudo).once("value", s => {
+          const color = s.val()?.color || "#000";
+          bubble.innerHTML = `
+            <div class="author" style="color: ${color};">${data.pseudo}</div>
+            <div>${data.message}</div>
+            <div class="timestamp">${data.time}</div>
+          `;
+        });
       }
 
-      div.classList.add("message");
-      div.classList.add(isOwn ? "own" : "other");
-
-      if (!isOwn) {
-        const author = document.createElement("div");
-        author.classList.add("author");
-        author.textContent = msg.author;
-        author.style.color = msg.color;
-        div.appendChild(author);
-      }
-
-      const text = document.createElement("div");
-      text.textContent = msg.text;
-      div.appendChild(text);
-
-      const timestamp = document.createElement("div");
-      timestamp.classList.add("timestamp");
-      timestamp.textContent = msg.timestamp;
-      div.appendChild(timestamp);
-
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
+      messagesDiv.appendChild(bubble);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
   </script>
 </body>
