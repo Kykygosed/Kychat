@@ -1,159 +1,103 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Groupe test</title>
+  <meta charset="UTF-8">
+  <title>Le groupe commu</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
-      background-color: #fff8d5;
+      font-family: Arial, sans-serif;
+      background-color: #ffe135; /* Jaune banane */
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
-
     .topbar {
-      background-color: white;
+      background-color: #075E54;
+      color: white;
       padding: 10px;
       display: flex;
       align-items: center;
-      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
     }
-
     .topbar img {
       width: 40px;
       height: 40px;
       border-radius: 50%;
-      margin: 0 10px;
+      margin-right: 10px;
     }
-
-    .topbar .info {
-      flex-grow: 1;
-    }
-
-    .topbar .info .title {
+    .topbar span {
       font-weight: bold;
+      font-size: 18px;
     }
-
-    .topbar .info .subtitle {
-      font-size: 12px;
-      color: gray;
-    }
-
-    .topbar .icons {
-      display: flex;
-      gap: 10px;
-      font-size: 20px;
-    }
-
-    .encryption-info {
-      background-color: #fff3cd;
-      color: #856404;
-      font-size: 13px;
-      text-align: center;
-      padding: 10px;
-    }
-
-    .messages {
-      flex-grow: 1;
-      padding: 15px;
+    .chat-container {
+      flex: 1;
       overflow-y: auto;
+      padding: 10px;
       display: flex;
       flex-direction: column;
     }
-
     .message {
-      background-color: #dcf8c6;
-      border-radius: 8px;
-      padding: 8px 10px;
-      margin-bottom: 8px;
-      max-width: 70%;
+      max-width: 60%;
+      margin: 5px;
+      padding: 8px;
+      border-radius: 10px;
       position: relative;
       word-wrap: break-word;
     }
-
     .message.you {
       align-self: flex-end;
-      background-color: #dcf8c6;
+      background-color: #DCF8C6;
     }
-
     .message.other {
       align-self: flex-start;
-      background-color: #ffffff;
-      border: 1px solid #ccc;
+      background-color: white;
     }
-
-    .message .time {
+    .message .meta {
       font-size: 10px;
       color: gray;
-      position: absolute;
-      bottom: 2px;
-      right: 5px;
+      margin-top: 5px;
     }
-
-    .input-bar {
+    .message .author {
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+    .input-area {
       display: flex;
       padding: 10px;
-      background-color: white;
-      border-top: 1px solid #ccc;
+      background: white;
     }
-
-    .input-bar input {
-      flex-grow: 1;
-      padding: 8px 10px;
+    .input-area input {
+      flex: 1;
+      padding: 10px;
       border: 1px solid #ccc;
       border-radius: 20px;
-      font-size: 14px;
+      outline: none;
     }
-
-    .input-bar button {
-      background-color: #25d366;
+    .input-area button {
+      background: none;
       border: none;
-      color: white;
-      padding: 0 16px;
-      margin-left: 8px;
-      border-radius: 50%;
-      font-size: 18px;
+      font-size: 20px;
+      margin-left: 10px;
       cursor: pointer;
     }
   </style>
 </head>
 <body>
-
-  <!-- Top bar -->
   <div class="topbar">
-    <span>&larr;</span>
-    <img src="https://i.imgur.com/SdZRnls.jpeg" alt="Groupe"/>
-    <div class="info">
-      <div class="title">Groupe test</div>
-      <div class="subtitle">Vous</div>
-    </div>
-    <div class="icons">
-      ⋮
-    </div>
+    <img src="https://cdn-icons-png.flaticon.com/512/1246/1246270.png" />
+    <span>Le groupe commu</span>
   </div>
 
-  <!-- Info chiffrement -->
-  <div class="encryption-info">
-    🔒 Les messages et les appels sont chiffrés de bout en bout. Seules les personnes prenant part à cette discussion peuvent les lire, les écouter ou les partager. En savoir plus.
+  <div class="chat-container" id="chat"></div>
+
+  <div class="input-area">
+    <input id="messageInput" placeholder="Message" onkeydown="handleKey(event)">
+    <button onclick="sendMessage()">✉️</button>
   </div>
 
-  <!-- Messages -->
-  <div class="messages" id="messages"></div>
-
-  <!-- Input -->
-  <div class="input-bar">
-    <input type="text" id="messageInput" placeholder="Message" onkeydown="handleKey(event)" />
-    <button onclick="sendMessage()">➤</button>
-  </div>
-
-  <!-- Firebase + JS -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -164,47 +108,63 @@
       appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const messagesRef = ref(db, "messages");
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    const messagesDiv = document.getElementById("messages");
-
-    // Nom du sender par défaut
-    const currentUser = "Vous";
+    const username = localStorage.getItem("username") || "Vous";
 
     function sendMessage() {
       const input = document.getElementById("messageInput");
       const text = input.value.trim();
-      if (text !== "") {
-        push(messagesRef, {
-          sender: currentUser,
-          text,
-          timestamp: new Date().toISOString()
-        });
-        input.value = "";
-      }
+      if (text === "") return;
+
+      db.ref("messages").push({
+        sender: username,
+        text: text,
+        timestamp: Date.now(),
+        views: {}
+      });
+
+      input.value = "";
     }
 
-    function handleKey(event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        sendMessage();
-      }
+    function handleKey(e) {
+      if (e.key === "Enter") sendMessage();
     }
 
-    onChildAdded(messagesRef, (snapshot) => {
+    db.ref("messages").on("child_added", snapshot => {
       const data = snapshot.val();
-      const msgDiv = document.createElement("div");
-      msgDiv.classList.add("message");
-      msgDiv.classList.add(data.sender === currentUser ? "you" : "other");
-      msgDiv.innerHTML = `
-        ${data.text}
-        <div class="time">${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+      const chat = document.getElementById("chat");
+      const div = document.createElement("div");
+      div.className = "message " + (data.sender === username ? "you" : "other");
+
+      if (data.sender !== username) {
+        div.innerHTML = `<div class='author' style='color:${stringToColor(data.sender)}'>${data.sender}</div>`;
+      }
+
+      div.innerHTML += `
+        <div>${data.text}</div>
+        <div class="meta">${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       `;
-      messagesDiv.appendChild(msgDiv);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+
+      if (!data.views || !data.views[username]) {
+        db.ref(`messages/${snapshot.key}/views/${username}`).set(true);
+      }
     });
+
+    function stringToColor(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const c = (hash & 0x00FFFFFF)
+        .toString(16)
+        .toUpperCase();
+      return "#" + "00000".substring(0, 6 - c.length) + c;
+    }
   </script>
 </body>
 </html>
