@@ -121,55 +121,9 @@
       border-radius: 50%;
       cursor: pointer;
     }
-    .user-popup {
-  position: fixed;
-  bottom: -100%;
-  left: 0;
-  width: 100%;
-  height: 50%;
-  background: white;
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
-  box-shadow: 0 -4px 10px rgba(0,0,0,0.3);
-  transition: bottom 0.4s ease-in-out;
-  z-index: 999;
-}
-
-.user-popup.show {
-  bottom: 0;
-}
-
-.popup-content {
-  padding: 20px;
-  overflow-y: auto;
-  height: 100%;
-}
-
-#userList li {
-  margin-bottom: 10px;
-  font-size: 16px;
-}
-
-.admin-badge {
-  background: #128C7E;
-  color: white;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  margin-left: 6px;
-}
-
   </style>
 </head>
 <body>
-  <div id="userPopup" class="user-popup">
-  <div class="popup-content">
-    <h3>Utilisateurs inscrits</h3>
-    <ul id="userList"></ul>
-    <button onclick="toggleUserPopup()">Fermer</button>
-  </div>
-</div>
-
   <div class="topbar">
     <div class="back-arrow">&#8592;</div>
     <div class="group-icon"></div>
@@ -179,9 +133,7 @@
     </div>
     <button onclick="window.location.href='info.html'">Infos du groupe</button>
     <div class="spacer"></div>
-    <div style="margin-left: auto; cursor: pointer;" onclick="toggleUserPopup()">
-  &#8942;
-</div>
+    <div class="menu">&#8942;</div>
   </div>
   <div id="messages"></div>
   <div class="bottombar">
@@ -193,100 +145,81 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
-  
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
-  import { getDatabase, ref, onValue, get, child } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.appspot.com",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-
-  const pseudo = localStorage.getItem("pseudo");
-  if (!pseudo) window.location.href = "index.html";
-
-  let userColor = "#000";
-
-  // Récupère la couleur du pseudo
-  get(ref(db, "users/" + pseudo)).then(snapshot => {
-    const data = snapshot.val();
-    if (data && data.color) userColor = data.color;
-  });
-
-  const messagesDiv = document.getElementById("messages");
-  const input = document.getElementById("inputMessage");
-  const sendBtn = document.getElementById("sendBtn");
-
-  // Envoyer un message
-  sendBtn.onclick = () => {
-    const text = input.value.trim();
-    if (!text) return;
-
-    const now = new Date();
-    const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const messageData = {
-      pseudo,
-      color: userColor,
-      text,
-      time: timestamp
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
-    firebase.database().ref("messages").push(messageData);
-    input.value = "";
-  };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-  // Écoute les nouveaux messages
-  firebase.database().ref("messages").on("child_added", snap => {
-    const data = snap.val();
-    const msg = document.createElement("div");
-    msg.innerHTML = `<span style="color:${data.color}; font-weight:bold;">${data.pseudo}</span> : ${data.text} <span style="font-size:12px; color:gray;">${data.time}</span>`;
-    messagesDiv.appendChild(msg);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  });
+    const pseudo = localStorage.getItem("pseudo");
+    if (!pseudo) window.location.href = "index.html";
 
-  // === POPUP UTILISATEURS ===
+    let userColor = "#000";
 
-  function toggleUserPopup() {
-    const popup = document.getElementById("userPopup");
-    const userList = document.getElementById("userList");
+    // Récupère la couleur du pseudo
+    firebase.database().ref("users/" + pseudo).once("value", snap => {
+      const data = snap.val();
+      if (data && data.color) userColor = data.color;
+    });
 
-    if (popup.classList.contains("open")) {
-      popup.classList.remove("open");
-      popup.classList.add("close");
-    } else {
-      popup.classList.remove("close");
-      popup.classList.add("open");
+    const messagesDiv = document.getElementById("messages");
+    const input = document.getElementById("inputMessage");
+    const sendBtn = document.getElementById("sendBtn");
 
-      // Rafraîchir la liste des utilisateurs
-      get(ref(db, "users")).then(snapshot => {
-        userList.innerHTML = ""; // Nettoie la liste
-        snapshot.forEach(childSnap => {
-          const user = childSnap.val();
-          const li = document.createElement("li");
+    // Envoyer un message
+    sendBtn.onclick = () => {
+      const text = input.value.trim();
+      if (!text) return;
 
-          const isAdmin = user.admin === true;
-          li.innerHTML = `
-            <span style="color:${user.color || '#000'}; font-weight:bold;">${childSnap.key}</span>
-            ${isAdmin ? '<span style="margin-left: 8px; padding: 2px 6px; background-color: #C8E6C9; color: #2E7D32; border-radius: 10px; font-size: 12px;">ADMIN</span>' : ''}
-          `;
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-          userList.appendChild(li);
-        });
+      db.ref("messages").push({
+        pseudo: pseudo,
+        message: text,
+        time: timestamp
       });
-    }
-  }
 
+      input.value = "";
+    };
 
+    // Affichage des messages
+    db.ref("messages").on("child_added", snap => {
+      const data = snap.val();
+      const bubble = document.createElement("div");
+      bubble.classList.add("message");
+
+      if (data.pseudo === pseudo) {
+        bubble.classList.add("me");
+        bubble.innerHTML = `
+          <div>${data.message}</div>
+          <div class="timestamp">${data.time}</div>
+        `;
+      } else {
+        bubble.classList.add("other");
+
+        // Récupère la couleur de l'auteur
+        firebase.database().ref("users/" + data.pseudo).once("value", s => {
+          const color = s.val()?.color || "#000";
+          bubble.innerHTML = `
+            <div class="author" style="color: ${color};">${data.pseudo}</div>
+            <div>${data.message}</div>
+            <div class="timestamp">${data.time}</div>
+          `;
+        });
+      }
+
+      messagesDiv.appendChild(bubble);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
   </script>
 </body>
 </html>
