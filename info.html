@@ -29,8 +29,7 @@
       border-radius: 15px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
       animation: slideUp 0.3s ease;
     }
 
@@ -48,6 +47,7 @@
     .username {
       font-size: 16px;
       font-weight: bold;
+      margin-bottom: 8px;
     }
 
     .admin-badge {
@@ -59,7 +59,13 @@
       margin-left: 10px;
     }
 
-    .admin-toggle {
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .admin-toggle, .ban-btn {
       padding: 4px 8px;
       background: #128C7E;
       color: white;
@@ -69,8 +75,12 @@
       font-size: 12px;
     }
 
-    .admin-toggle:hover {
+    .admin-toggle:hover, .ban-btn:hover {
       background: #0d6e61;
+    }
+
+    .ban-options {
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -80,7 +90,6 @@
     <div id="userList"></div>
   </div>
 
-  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -102,14 +111,12 @@
     const currentUser = localStorage.getItem("pseudo");
     let isAdmin = false;
 
-    // Vérifie si l'utilisateur connecté est admin
     firebase.database().ref("users/" + currentUser).once("value", snap => {
       if (snap.exists() && snap.val().admin === true) {
         isAdmin = true;
       }
     });
 
-    // Affiche tous les utilisateurs
     firebase.database().ref("users").on("value", snapshot => {
       userListDiv.innerHTML = "";
 
@@ -134,18 +141,39 @@
 
         card.appendChild(name);
 
-        // Si on est admin, on peut modifier le statut des autres
         if (isAdmin && username !== currentUser) {
+          const buttons = document.createElement("div");
+          buttons.className = "buttons";
+
           const toggle = document.createElement("button");
           toggle.className = "admin-toggle";
           toggle.textContent = user.admin ? "Retirer admin" : "Donner admin";
-
           toggle.onclick = () => {
-            const newStatus = !user.admin;
-            firebase.database().ref("users/" + username + "/admin").set(newStatus);
+            firebase.database().ref("users/" + username + "/admin").set(!user.admin);
           };
+          buttons.appendChild(toggle);
 
-          card.appendChild(toggle);
+          const banBtn = document.createElement("button");
+          banBtn.className = "ban-btn";
+          banBtn.textContent = "Bannir";
+          banBtn.onclick = () => {
+            const choice = prompt("Tapez 'permanent' pour ban permanent, ou 'temporaire' pour choisir une date de fin");
+            if (choice === "permanent") {
+              firebase.database().ref("users/" + username + "/banned").set("permanent");
+              alert(username + " a été banni de façon permanente.");
+            } else if (choice === "temporaire") {
+              const input = prompt("Entrez la date de fin sous la forme JJ/MM/AAAA/HH/MM");
+              if (/^\d{2}\/\d{2}\/\d{4}\/\d{2}\/\d{2}$/.test(input)) {
+                firebase.database().ref("users/" + username + "/banned").set(input);
+                alert(username + " a été banni jusqu'au " + input);
+              } else {
+                alert("Format de date invalide.");
+              }
+            }
+          };
+          buttons.appendChild(banBtn);
+
+          card.appendChild(buttons);
         }
 
         userListDiv.appendChild(card);
