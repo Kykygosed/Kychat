@@ -32,29 +32,62 @@
   <img id="seatbelts" src="seatbelts.png">
   <img id="nosmoking" src="nosmoking.png">
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-      authDomain: "kykychat-24c7f.firebaseapp.com",
-      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-      projectId: "kykychat-24c7f",
-      storageBucket: "kykychat-24c7f.appspot.com",
-      messagingSenderId: "342562811927",
-      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
 
-    const seatbeltsImg = document.getElementById('seatbelts');
-    const nosmokingImg = document.getElementById('nosmoking');
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.appspot.com",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-    db.ref('signs/seatbelts').on('value', snapshot => {
-      seatbeltsImg.style.display = snapshot.val() ? 'block' : 'none';
-    });
+  const seatbeltsImg = document.getElementById('seatbelts');
+  const nosmokingImg = document.getElementById('nosmoking');
+  const chime = document.getElementById('chime');
 
-    db.ref('signs/nosmoking').on('value', snapshot => {
-      nosmokingImg.style.display = snapshot.val() ? 'block' : 'none';
-    });
+  let previousState = { seatbelts: null, nosmoking: null };
+
+  function playChimeEnd() {
+    if (chime.readyState >= 2) { // check if metadata is loaded
+      chime.currentTime = Math.max(0, chime.duration - 2);
+      chime.play().catch(e => {
+        // silently ignore autoplay errors
+      });
+    }
+  }
+
+  db.ref('signs/seatbelts').on('value', snapshot => {
+    const val = snapshot.val();
+    seatbeltsImg.style.display = val ? 'block' : 'none';
+
+    if (previousState.seatbelts !== null && previousState.seatbelts !== val) {
+      playChimeEnd();
+    }
+
+    previousState.seatbelts = val;
+  });
+
+  db.ref('signs/nosmoking').on('value', snapshot => {
+    const val = snapshot.val();
+    nosmokingImg.style.display = val ? 'block' : 'none';
+
+    if (previousState.nosmoking !== null && previousState.nosmoking !== val) {
+      playChimeEnd();
+    }
+
+    previousState.nosmoking = val;
+  });
+
+  chime.addEventListener("loadedmetadata", () => {
+    // Now we can seek safely when needed
+  });
+
+
   </script>
 </body>
 </html>
