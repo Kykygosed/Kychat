@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Switch Signs</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+</head>
+<body style="text-align:center; font-family:sans-serif; margin-top:50px;">
+  <h1>Seatbelt & No Smoking Control</h1>
+  <button onclick="toggleSign('seatbelts')">Toggle Seatbelts</button>
+  <button onclick="toggleSign('nosmoking')">Toggle No Smoking</button>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function toggleSign(sign) {
+      const ref = db.ref('signs/' + sign);
+      ref.once('value').then(snapshot => {
+        const current = snapshot.val() || false;
+        ref.set(!current);
+      });
+    }
+  </script>
+</body>
+</html>
