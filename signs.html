@@ -54,7 +54,7 @@
 
     function playChimeEnd() {
       if (chime.readyState >= 2) {
-        const startTime = Math.max(0, chime.duration - 2);
+        const startTime = Math.max(0, chime.duration - 1);
         chime.currentTime = startTime;
         chime.play().catch(err => {
           // Autoplay might fail until user interacts — browsers block it silently
