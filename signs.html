@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Signs Display</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+</head>
+<body style="background-color:black; display:flex; justify-content:center; align-items:center; height:100vh; gap:50px;">
+  <img id="seatbelts" src="seatbelts.png" style="display:none; width:100px;">
+  <img id="nosmoking" src="nosmoking.png" style="display:none; width:100px;">
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const seatbeltsImg = document.getElementById('seatbelts');
+    const nosmokingImg = document.getElementById('nosmoking');
+
+    db.ref('signs/seatbelts').on('value', snapshot => {
+      seatbeltsImg.style.display = snapshot.val() ? 'block' : 'none';
+    });
+
+    db.ref('signs/nosmoking').on('value', snapshot => {
+      nosmokingImg.style.display = snapshot.val() ? 'block' : 'none';
+    });
+  </script>
+</body>
+</html>
