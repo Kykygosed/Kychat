@@ -4,10 +4,33 @@
   <title>Signs Display</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body {
+      background-color: black;
+      margin: 0;
+      overflow: hidden;
+    }
+    #seatbelts {
+      position: absolute;
+      left: 25%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      display: none;
+    }
+    #nosmoking {
+      position: absolute;
+      right: 25%;
+      top: 50%;
+      transform: translate(50%, -50%);
+      width: 100px;
+      display: none;
+    }
+  </style>
 </head>
-<body style="background-color:black; display:flex; justify-content:center; align-items:center; height:100vh; gap:50px;">
-  <img id="seatbelts" src="seatbelts.png" style="display:none; width:100px;">
-  <img id="nosmoking" src="nosmoking.png" style="display:none; width:100px;">
+<body>
+  <img id="seatbelts" src="seatbelts.png">
+  <img id="nosmoking" src="nosmoking.png">
 
   <script>
     const firebaseConfig = {
