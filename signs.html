@@ -52,14 +52,11 @@
 
     let previousState = { seatbelts: null, nosmoking: null };
 
-    function playChimeEnd() {
-      if (chime.readyState >= 2) {
-        const startTime = Math.max(0, chime.duration - 1);
-        chime.currentTime = startTime;
-        chime.play().catch(err => {
-          // Autoplay might fail until user interacts — browsers block it silently
-        });
-      }
+    function playChime() {
+      chime.currentTime = 0;
+      chime.play().catch(() => {
+        // Autoplay protection (ignore silently)
+      });
     }
 
     db.ref('signs/seatbelts').on('value', snapshot => {
@@ -67,7 +64,7 @@
       seatbeltsImg.style.display = val ? 'block' : 'none';
 
       if (previousState.seatbelts !== null && previousState.seatbelts !== val) {
-        playChimeEnd();
+        playChime();
       }
 
       previousState.seatbelts = val;
@@ -78,15 +75,10 @@
       nosmokingImg.style.display = val ? 'block' : 'none';
 
       if (previousState.nosmoking !== null && previousState.nosmoking !== val) {
-        playChimeEnd();
+        playChime();
       }
 
       previousState.nosmoking = val;
-    });
-
-    // Make sure audio is ready
-    chime.addEventListener('loadedmetadata', () => {
-      // Ready to play segment
     });
   </script>
 </body>
