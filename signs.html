@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Signs Display</title>
+  <title>Aircraft Signs</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
@@ -29,65 +29,65 @@
   </style>
 </head>
 <body>
-  <img id="seatbelts" src="seatbelts.png">
-  <img id="nosmoking" src="nosmoking.png">
+  <img id="seatbelts" src="seatbelts.png" alt="Seatbelts Sign">
+  <img id="nosmoking" src="nosmoking.png" alt="No Smoking Sign">
+  <audio id="chime" src="chime.mp3" preload="auto"></audio>
 
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.appspot.com",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    const seatbeltsImg = document.getElementById('seatbelts');
+    const nosmokingImg = document.getElementById('nosmoking');
+    const chime = document.getElementById('chime');
 
-  const seatbeltsImg = document.getElementById('seatbelts');
-  const nosmokingImg = document.getElementById('nosmoking');
-  const chime = document.getElementById('chime');
+    let previousState = { seatbelts: null, nosmoking: null };
 
-  let previousState = { seatbelts: null, nosmoking: null };
-
-  function playChimeEnd() {
-    if (chime.readyState >= 2) { // check if metadata is loaded
-      chime.currentTime = Math.max(0, chime.duration - 2);
-      chime.play().catch(e => {
-        // silently ignore autoplay errors
-      });
-    }
-  }
-
-  db.ref('signs/seatbelts').on('value', snapshot => {
-    const val = snapshot.val();
-    seatbeltsImg.style.display = val ? 'block' : 'none';
-
-    if (previousState.seatbelts !== null && previousState.seatbelts !== val) {
-      playChimeEnd();
+    function playChimeEnd() {
+      if (chime.readyState >= 2) {
+        const startTime = Math.max(0, chime.duration - 2);
+        chime.currentTime = startTime;
+        chime.play().catch(err => {
+          // Autoplay might fail until user interacts — browsers block it silently
+        });
+      }
     }
 
-    previousState.seatbelts = val;
-  });
+    db.ref('signs/seatbelts').on('value', snapshot => {
+      const val = snapshot.val();
+      seatbeltsImg.style.display = val ? 'block' : 'none';
 
-  db.ref('signs/nosmoking').on('value', snapshot => {
-    const val = snapshot.val();
-    nosmokingImg.style.display = val ? 'block' : 'none';
+      if (previousState.seatbelts !== null && previousState.seatbelts !== val) {
+        playChimeEnd();
+      }
 
-    if (previousState.nosmoking !== null && previousState.nosmoking !== val) {
-      playChimeEnd();
-    }
+      previousState.seatbelts = val;
+    });
 
-    previousState.nosmoking = val;
-  });
+    db.ref('signs/nosmoking').on('value', snapshot => {
+      const val = snapshot.val();
+      nosmokingImg.style.display = val ? 'block' : 'none';
 
-  chime.addEventListener("loadedmetadata", () => {
-    // Now we can seek safely when needed
-  });
+      if (previousState.nosmoking !== null && previousState.nosmoking !== val) {
+        playChimeEnd();
+      }
 
+      previousState.nosmoking = val;
+    });
 
+    // Make sure audio is ready
+    chime.addEventListener('loadedmetadata', () => {
+      // Ready to play segment
+    });
   </script>
 </body>
 </html>
