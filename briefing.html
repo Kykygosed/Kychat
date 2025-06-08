@@ -2,57 +2,80 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Briefing - Vol MSFS2024</title>
+  <title>Briefing</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #111;
+      background-color: #121212;
       color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
+      font-family: Arial, sans-serif;
+      padding: 40px;
     }
-    form {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      width: 300px;
+
+    h1 {
+      color: #1e90ff;
+      margin-bottom: 30px;
     }
-    input, button {
+
+    label {
+      display: block;
+      margin: 10px 0 5px;
+    }
+
+    input {
+      width: 100%;
       padding: 10px;
       border: none;
       border-radius: 5px;
+      margin-bottom: 15px;
     }
-    input {
-      background: #222;
-      color: white;
-    }
+
     button {
-      background: #2979ff;
+      background-color: #1e90ff;
       color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 5px;
       cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: #187bcd;
     }
   </style>
 </head>
 <body>
-  <h1>Briefing Pilote</h1>
-  <form id="briefingForm">
-    <input type="text" placeholder="Callsign" id="callsign" required>
-    <input type="text" placeholder="Nom du pilote" id="pilot" required>
-    <input type="text" placeholder="Compagnie" id="company" required>
-    <input type="text" placeholder="Départ (ICAO)" id="departure" required>
-    <input type="text" placeholder="Arrivée (ICAO)" id="arrival" required>
-    <button type="submit">Envoyer</button>
-  </form>
+  <h1>Briefing Vol</h1>
 
-  <!-- Firebase -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  <label>Callsign</label>
+  <input type="text" id="callsign">
 
+  <label>Pilote</label>
+  <input type="text" id="pilot">
+
+  <label>Compagnie</label>
+  <input type="text" id="company">
+
+  <label>Départ</label>
+  <input type="text" id="departure">
+
+  <label>Arrivée</label>
+  <input type="text" id="arrival">
+
+  <label>Ligne de départ</label>
+  <input type="text" id="departureLine">
+
+  <label>Ligne d’arrivée</label>
+  <input type="text" id="arrivalLine">
+
+  <label>Type d'avion</label>
+  <input type="text" id="aircraft">
+
+  <button onclick="saveBriefing()">Sauvegarder</button>
+
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -63,22 +86,29 @@
       appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    document.getElementById("briefingForm").addEventListener("submit", (e) => {
-      e.preventDefault();
+    function saveBriefing() {
       const data = {
-        callsign: document.getElementById("callsign").value,
-        pilot: document.getElementById("pilot").value,
-        company: document.getElementById("company").value,
-        departure: document.getElementById("departure").value,
-        arrival: document.getElementById("arrival").value,
+        callsign: document.getElementById('callsign').value,
+        pilot: document.getElementById('pilot').value,
+        company: document.getElementById('company').value,
+        departure: document.getElementById('departure').value,
+        arrival: document.getElementById('arrival').value,
+        departureLine: document.getElementById('departureLine').value,
+        arrivalLine: document.getElementById('arrivalLine').value,
+        aircraft: document.getElementById('aircraft').value
       };
-      set(ref(db, "briefing/"), data)
-        .then(() => alert("Briefing envoyé avec succès !"))
-        .catch((err) => alert("Erreur : " + err));
-    });
+
+      db.ref('briefing').set(data, (error) => {
+        if (error) {
+          alert('Erreur lors de l\'enregistrement !');
+        } else {
+          alert('Briefing enregistré avec succès.');
+        }
+      });
+    }
   </script>
 </body>
 </html>
