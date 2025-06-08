@@ -1,103 +1,109 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Cesium avec clé API et logbox</title>
-  <script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
+<meta charset="UTF-8" />
+<title>Sim MSFS - Vue Passager + Cesium + Logs</title>
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-
-  <style>
-    html, body, #cesiumContainer {
-      margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden;
-    }
-    #logBox {
-      position: absolute;
-      top: 10px; left: 10px;
-      max-width: 350px; max-height: 250px;
-      overflow-y: auto;
-      background: rgba(0,0,0,0.7);
-      color: #0f0;
-      font-family: monospace;
-      font-size: 12px;
-      padding: 8px;
-      border-radius: 5px;
-      z-index: 9999;
-      white-space: pre-line;
-    }
-    #info {
-      position: absolute;
-      bottom: 10px; left: 10px;
-      color: white;
-      background: rgba(0,0,0,0.7);
-      padding: 6px 10px;
-      border-radius: 4px;
-      font-family: Arial, sans-serif;
-      font-size: 14px;
-      z-index: 9999;
-    }
-  </style>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #000;
+    color: #eee;
+  }
+  #cesiumContainer {
+    position: absolute; top: 0; left: 0; right: 300px; bottom: 0;
+  }
+  #logbox {
+    position: absolute;
+    top: 0; right: 0;
+    width: 300px; height: 100%;
+    background: #111;
+    overflow-y: auto;
+    padding: 10px;
+    box-sizing: border-box;
+    font-size: 14px;
+    border-left: 1px solid #444;
+  }
+  #logbox pre {
+    white-space: pre-wrap;
+  }
+</style>
 </head>
 <body>
-  <div id="cesiumContainer"></div>
-  <div id="logBox">Initialisation Cesium...</div>
-  <div id="info"></div>
 
-  <!-- Import Cesium JS en premier -->
-  <script src="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Cesium.js"></script>
+<div id="cesiumContainer"></div>
+<div id="logbox"><pre id="log"></pre></div>
 
-  <!-- Ton script personnalisé APRES -->
-  <script>
-    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
+<script>
+  // Ta clé Cesium Ion (remplace par la tienne)
+  Cesium.Ion.defaultAccessToken = 'VOTRE_CESIUM_ION_ACCESS_TOKEN_ICI';
 
-    const logBox = document.getElementById('logBox');
-    const info = document.getElementById('info');
+  const logElement = document.getElementById('log');
+  function log(msg) {
+    const time = new Date().toLocaleTimeString();
+    logElement.textContent += `[${time}] ${msg}\n`;
+    logElement.scrollTop = logElement.scrollHeight;
+  }
 
-    function log(msg) {
-      const time = new Date().toLocaleTimeString();
-      logBox.innerText += `\n[${time}] ${msg}`;
-      logBox.scrollTop = logBox.scrollHeight;
-      console.log(msg);
-    }
+  log("Initialisation Cesium...");
 
-    log("Démarrage Cesium...");
+  // Création du viewer Cesium avec terrain réaliste
+  const viewer = new Cesium.Viewer('cesiumContainer', {
+    terrainProvider: Cesium.createWorldTerrain(),
+    baseLayerPicker: false,
+    timeline: false,
+    animation: false,
+    infoBox: false,
+    selectionIndicator: false,
+    shouldAnimate: false
+  });
 
-    try {
-      const viewer = new Cesium.Viewer('cesiumContainer', {
-        terrainProvider: new Cesium.CesiumTerrainProvider({
-          url: Cesium.IonResource.fromAssetId(1)
-        }),
-        imageryProvider: new Cesium.IonImageryProvider({
-          assetId: 2
-        }),
-        timeline: false,
-        animation: false,
-        baseLayerPicker: false,
-        infoBox: false,
-        selectionIndicator: false,
-        shouldAnimate: false
-      });
+  log("Cesium initialisé avec terrain WorldTerrain.");
 
-      log("Cesium chargé avec terrain et imagerie.");
+  // Position et orientation initiale (exemple Paris)
+  let position = {
+    lat: 48.8566,
+    lon: 2.3522,
+    alt: 3000
+  };
+  let pseudo = "KYKYGosed_off";
+  let flightNumber = "MSFS1234";
 
-      function updatePosition() {
-        log("Placement caméra sur Paris (exemple)...");
-        viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromDegrees(2.3522, 48.8566, 2000),
-          orientation: {
-            heading: 0,
-            pitch: Cesium.Math.toRadians(-35),
-            roll: 0
-          }
-        });
-        info.innerText = "Position : Paris, France (exemple)";
-        log("Position caméra mise à jour.");
+  // Positionne la caméra sur la position initiale
+  function setCameraView(pos) {
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(pos.lon, pos.lat, pos.alt),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(-35),
+        roll: 0
       }
+    });
+    log(`Caméra positionnée sur lat: ${pos.lat.toFixed(4)}, lon: ${pos.lon.toFixed(4)}, alt: ${pos.alt}m`);
+  }
 
-      updatePosition();
+  setCameraView(position);
 
-    } catch (error) {
-      log("Erreur Cesium : " + error.message);
-    }
-  </script>
+  // Simuler réception périodique de données (ex: de Volanta ou SimConnect)
+  function simulatePositionUpdate() {
+    // On déplace la position un peu (par exemple longitude + 0.001)
+    position.lon += 0.001;
+
+    // Mise à jour de la caméra
+    setCameraView(position);
+
+    // Log update
+    log(`Position mise à jour - vol: ${flightNumber}, pilote: ${pseudo}`);
+  }
+
+  // Simuler réception toutes les 3 secondes
+  setInterval(simulatePositionUpdate, 3000);
+
+  log("Simulation de mise à jour de position démarrée.");
+
+</script>
+
 </body>
 </html>
