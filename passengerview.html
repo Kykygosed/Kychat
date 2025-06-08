@@ -1,37 +1,33 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Vue Passager MSFS</title>
   <script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
     html, body, #cesiumContainer {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
       overflow: hidden;
-      font-family: sans-serif;
     }
     #logbox {
       position: absolute;
-      bottom: 10px;
-      left: 10px;
+      bottom: 10px; left: 10px;
       background: rgba(0,0,0,0.6);
       color: lime;
       padding: 10px;
+      font-family: monospace;
       font-size: 14px;
       border-radius: 6px;
-      max-width: 300px;
+      max-width: 320px;
       max-height: 150px;
       overflow-y: auto;
       white-space: pre-wrap;
     }
     #callsign {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 10px; right: 10px;
       background: rgba(0,0,0,0.5);
       color: white;
       padding: 8px 14px;
@@ -44,66 +40,76 @@
 <body>
   <div id="cesiumContainer"></div>
   <div id="callsign">Volant en cours…</div>
-  <div id="logbox">🔄 Initialisation de la connexion à MSFS…</div>
+  <div id="logbox">🔄 Initialisation…</div>
 
   <script>
-    // Clé API Cesium ion (gratuite, remplace par la tienne si nécessaire)
-    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
+    // Affiche un message dans la logbox
+    function log(text) {
+      const el = document.getElementById("logbox");
+      el.textContent = `${text}\n\n${el.textContent}`;
+      el.scrollTop = 0;
+      console.log(text);
+    }
 
-    const viewer = new Cesium.Viewer('cesiumContainer', {
-      terrainProvider: Cesium.createWorldTerrain(),
-      timeline: false,
-      animation: false,
-      baseLayerPicker: false,
-      geocoder: false,
-      homeButton: false,
-      sceneModePicker: false,
-      navigationHelpButton: false,
-      infoBox: false,
-      selectionIndicator: false
-    });
+    // Ta clé API Cesium Ion
+    Cesium.Ion.defaultAccessToken = 'VOTRE_CESIUM_ION_ACCESS_TOKEN';
 
-    const log = (txt) => {
-      const box = document.getElementById("logbox");
-      box.textContent = `🧭 ${txt}\n\n` + box.textContent;
-    };
+    // Charger le terrain via IonResource
+    Cesium.IonResource.fromAssetId(1).then(resource => {
+      log("✅ Terrain IonResource chargé.");
 
-    const callsign = "MSFS Companion"; // Tu peux remplacer dynamiquement plus tard
-    document.getElementById("callsign").textContent = callsign;
+      const terrainProvider = new Cesium.CesiumTerrainProvider({ url: resource });
+      const viewer = new Cesium.Viewer('cesiumContainer', {
+        terrainProvider,
+        baseLayerPicker: false,
+        timeline: false,
+        animation: false,
+        infoBox: false,
+        selectionIndicator: false
+      });
 
-    // Suivi position MSFS
-    const ip = "192.168.1.126:4000";
-    const url = `http://${ip}/api/position`;
+      document.getElementById("callsign").textContent = "MSFS – Vue passager";
 
-    const updateInterval = 1000; // ms
-    let firstMove = true;
+      const companionUrl = "http://192.168.1.126:4000/api/position";
+      let first = true;
 
-    setInterval(() => {
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {
-          const lat = data.latitude;
-          const lon = data.longitude;
-          const alt = data.altitude;
+      // Fonction de mise à jour de position
+      function updatePosition() {
+        fetch(companionUrl)
+          .then(res => {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then(data => {
+            const lat = data.latitude;
+            const lon = data.longitude;
+            const alt = data.altitude;
 
-          log(`Lat: ${lat.toFixed(5)}\nLon: ${lon.toFixed(5)}\nAlt: ${alt.toFixed(1)} ft`);
+            log(`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}, ALT ${alt.toFixed(0)} ft`);
 
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt + 300),
-            orientation: {
-              heading: Cesium.Math.toRadians(0),
-              pitch: Cesium.Math.toRadians(-30),
-              roll: 0
-            },
-            duration: firstMove ? 2.0 : 0.5
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 300),
+              orientation: {
+                heading: Cesium.Math.toRadians(data.heading ?? 0),
+                pitch: Cesium.Math.toRadians(-30),
+                roll: 0
+              },
+              duration: first ? 2.0 : 0.5
+            });
+
+            first = false;
+          })
+          .catch(err => {
+            log("❌ Erreur Companion API: " + err.message);
           });
+      }
 
-          firstMove = false;
-        })
-        .catch(err => {
-          log("❌ Erreur de récupération MSFS:\n" + err.message);
-        });
-    }, updateInterval);
+      // Démarrer les mises à jour
+      updatePosition();
+      setInterval(updatePosition, 1000);
+    }).catch(err => {
+      log("❌ Échec de chargement du terrain : " + err.message);
+    });
   </script>
 </body>
 </html>
