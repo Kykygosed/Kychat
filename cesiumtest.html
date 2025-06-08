@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test Cesium minimal</title>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <style>
+    html, body, #cesiumContainer {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Cesium.js"></script>
+  <script>
+    Cesium.Ion.defaultAccessToken = 'VOTRE_CESIUM_ION_ACCESS_TOKEN_ICI';
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrainProvider: new Cesium.CesiumTerrainProvider({
+        url: Cesium.IonResource.fromAssetId(1)
+      }),
+      imageryProvider: new Cesium.IonImageryProvider({
+        assetId: 2
+      }),
+      baseLayerPicker: false,
+      timeline: false,
+      animation: false,
+      infoBox: false,
+      selectionIndicator: false,
+      shouldAnimate: false
+    });
+  </script>
+</body>
+</html>
