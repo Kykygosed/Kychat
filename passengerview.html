@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Vue Passager MSFS avec Volanta</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #cesiumContainer {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 10;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="info">Chargement...</div>
+
+  <script>
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrainProvider: Cesium.createWorldTerrain(),
+      shouldAnimate: true,
+      baseLayerPicker: false,
+      timeline: false,
+      animation: false,
+    });
+
+    const username = "kykygosed_off"; // Ton pseudo Volanta
+    const infoBox = document.getElementById('info');
+
+    function updateCameraFromVolanta() {
+      fetch(`https://api.volanta.app/v1/users/${username}/flight`)
+        .then(response => response.json())
+        .then(data => {
+          if (!data || !data.aircraft) {
+            infoBox.innerText = "Pas de vol en cours ou données indisponibles.";
+            return;
+          }
+
+          const lat = data.aircraft.latitude;
+          const lon = data.aircraft.longitude;
+          const alt = data.aircraft.altitude * 0.3048 + 100; // pieds → mètres + hauteur caméra
+          const heading = data.aircraft.heading;
+
+          infoBox.innerText = `📍 LAT: ${lat.toFixed(4)} | LON: ${lon.toFixed(4)} | ALT: ${Math.round(alt)} m | CAP: ${heading}`;
+
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+            orientation: {
+              heading: Cesium.Math.toRadians(heading),
+              pitch: Cesium.Math.toRadians(-10),
+              roll: 0.0
+            }
+          });
+        })
+        .catch(error => {
+          infoBox.innerText = "Erreur lors du chargement des données Volanta.";
+          console.error(error);
+        });
+    }
+
+    // Démarrer la boucle de mise à jour
+    updateCameraFromVolanta();
+    setInterval(updateCameraFromVolanta, 3000); // toutes les 3 secondes
+  </script>
+</body>
+</html>
