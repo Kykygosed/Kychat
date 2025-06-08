@@ -1,115 +1,79 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Vue Passager MSFS</title>
+  <meta charset="UTF-8">
+  <title>Passenger View - MSFS via Flight Events</title>
   <script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
     html, body, #cesiumContainer {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
       overflow: hidden;
     }
     #logbox {
       position: absolute;
-      bottom: 10px; left: 10px;
-      background: rgba(0,0,0,0.6);
-      color: lime;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
       padding: 10px;
       font-family: monospace;
       font-size: 14px;
-      border-radius: 6px;
-      max-width: 320px;
-      max-height: 150px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-    }
-    #callsign {
-      position: absolute;
-      top: 10px; right: 10px;
-      background: rgba(0,0,0,0.5);
-      color: white;
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-weight: bold;
-      font-size: 16px;
+      max-width: 300px;
+      border-radius: 5px;
     }
   </style>
 </head>
 <body>
-  <div id="cesiumContainer"></div>
-  <div id="callsign">Volant en cours…</div>
-  <div id="logbox">🔄 Initialisation…</div>
+<div id="cesiumContainer"></div>
+<div id="logbox">🔄 Initialisation...</div>
 
-  <script>
-    // Affiche un message dans la logbox
-    function log(text) {
-      const el = document.getElementById("logbox");
-      el.textContent = `${text}\n\n${el.textContent}`;
-      el.scrollTop = 0;
-      console.log(text);
-    }
+<script>
+  const viewer = new Cesium.Viewer('cesiumContainer', {
+    terrainProvider: Cesium.createWorldTerrain(),
+    timeline: false,
+    animation: false
+  });
 
-    // Ta clé API Cesium Ion
-    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
+  const pilotName = "EZY0000"; // Remplace par ton callsign Flight Events
+  const logbox = document.getElementById("logbox");
 
-    // Charger le terrain via IonResource
-    Cesium.IonResource.fromAssetId(1).then(resource => {
-      log("✅ Terrain IonResource chargé.");
+  function log(msg) {
+    logbox.innerText = msg;
+  }
 
-      const terrainProvider = new Cesium.CesiumTerrainProvider({ url: resource });
-      const viewer = new Cesium.Viewer('cesiumContainer', {
-        terrainProvider,
-        baseLayerPicker: false,
-        timeline: false,
-        animation: false,
-        infoBox: false,
-        selectionIndicator: false
-      });
+  async function fetchPosition() {
+    try {
+      const response = await fetch(`https://events.flighttracker.tech/live?pilot=${pilotName}`);
+      const data = await response.json();
 
-      document.getElementById("callsign").textContent = "MSFS – Vue passager";
-
-      const companionUrl = "http://192.168.1.126:4000/api/position";
-      let first = true;
-
-      // Fonction de mise à jour de position
-      function updatePosition() {
-        fetch(companionUrl)
-          .then(res => {
-            if (!res.ok) throw new Error("HTTP " + res.status);
-            return res.json();
-          })
-          .then(data => {
-            const lat = data.latitude;
-            const lon = data.longitude;
-            const alt = data.altitude;
-
-            log(`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}, ALT ${alt.toFixed(0)} ft`);
-
-            viewer.camera.flyTo({
-              destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 300),
-              orientation: {
-                heading: Cesium.Math.toRadians(data.heading ?? 0),
-                pitch: Cesium.Math.toRadians(-30),
-                roll: 0
-              },
-              duration: first ? 2.0 : 0.5
-            });
-
-            first = false;
-          })
-          .catch(err => {
-            log("❌ Erreur Companion API: " + err.message);
-          });
+      if (!data.length) {
+        log("⚠️ Aucune position trouvée pour le callsign.");
+        return;
       }
 
-      // Démarrer les mises à jour
-      updatePosition();
-      setInterval(updatePosition, 1000);
-    }).catch(err => {
-      log("❌ Échec de chargement du terrain : " + err.message);
-    });
-  </script>
+      const { lat, lon, alt, hdg, groundspeed } = data[0];
+      log(`📍 ${pilotName}\nLat: ${lat.toFixed(4)}\nLon: ${lon.toFixed(4)}\nAlt: ${alt} ft\nGS: ${groundspeed} kt\nHDG: ${hdg}°`);
+
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 100), // +100m for "passenger view"
+        orientation: {
+          heading: Cesium.Math.toRadians(hdg),
+          pitch: Cesium.Math.toRadians(-10), // slight nose-down for realism
+          roll: 0.0
+        }
+      });
+    } catch (error) {
+      log(`❌ Erreur de récupération : ${error.message}`);
+    }
+  }
+
+  // Actualise la position toutes les 2 secondes
+  setInterval(fetchPosition, 2000);
+  fetchPosition();
+</script>
 </body>
 </html>
