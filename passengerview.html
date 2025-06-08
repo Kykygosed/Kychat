@@ -1,29 +1,18 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Passenger View - MSFS via Flight Events</title>
+  <meta charset="UTF-8" />
+  <title>Passenger View - MSFS via Node.js API</title>
   <script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
     html, body, #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
     }
     #logbox {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 10px;
-      font-family: monospace;
-      font-size: 14px;
-      max-width: 300px;
-      border-radius: 5px;
+      position: absolute; bottom: 10px; left: 10px;
+      background: rgba(0,0,0,0.7); color: white; padding: 10px;
+      font-family: monospace; font-size: 14px; max-width: 300px; border-radius: 5px;
     }
   </style>
 </head>
@@ -33,13 +22,12 @@
 
 <script>
   const viewer = new Cesium.Viewer('cesiumContainer', {
-    terrainProvider: new Cesium.EllipsoidTerrainProvider(), // Terrain simple sans API
+    terrainProvider: Cesium.createWorldTerrain(),
     timeline: false,
     animation: false
   });
 
-  const pilotName = "EZY0000"; // Remplace par ton callsign Flight Events
-  const logbox = document.getElementById("logbox");
+  const logbox = document.getElementById('logbox');
 
   function log(msg) {
     logbox.innerText = msg;
@@ -47,27 +35,22 @@
 
   async function fetchPosition() {
     try {
-      const response = await fetch(`https://events.flighttracker.tech/live?pilot=${pilotName}`);
+      const response = await fetch('/api/position');
+      if (!response.ok) throw new Error('HTTP error ' + response.status);
       const data = await response.json();
 
-      if (!data.length) {
-        log("⚠️ Aucune position trouvée pour le callsign.");
-        return;
-      }
-
-      const { lat, lon, alt, hdg, groundspeed } = data[0];
-      log(`📍 ${pilotName}\nLat: ${lat.toFixed(4)}\nLon: ${lon.toFixed(4)}\nAlt: ${alt} ft\nGS: ${groundspeed} kt\nHDG: ${hdg}°`);
+      log(`📍 Position reçue\nLat: ${data.lat}\nLon: ${data.lon}\nAlt: ${data.alt} ft\nHDG: ${data.hdg}°\nGS: ${data.groundspeed} kt`);
 
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 100),
+        destination: Cesium.Cartesian3.fromDegrees(data.lon, data.lat, data.alt * 0.3048 + 100),
         orientation: {
-          heading: Cesium.Math.toRadians(hdg),
+          heading: Cesium.Math.toRadians(data.hdg),
           pitch: Cesium.Math.toRadians(-10),
-          roll: 0.0
+          roll: 0
         }
       });
-    } catch (error) {
-      log(`❌ Erreur de récupération : ${error.message}`);
+    } catch (e) {
+      log('❌ Erreur: ' + e.message);
     }
   }
 
@@ -76,3 +59,4 @@
 </script>
 </body>
 </html>
+
