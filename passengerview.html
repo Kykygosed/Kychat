@@ -33,7 +33,7 @@
 
 <script>
   const viewer = new Cesium.Viewer('cesiumContainer', {
-    terrainProvider: Cesium.createWorldTerrain(),
+    terrainProvider: new Cesium.EllipsoidTerrainProvider(), // Terrain simple sans API
     timeline: false,
     animation: false
   });
@@ -59,10 +59,10 @@
       log(`📍 ${pilotName}\nLat: ${lat.toFixed(4)}\nLon: ${lon.toFixed(4)}\nAlt: ${alt} ft\nGS: ${groundspeed} kt\nHDG: ${hdg}°`);
 
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 100), // +100m for "passenger view"
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 100),
         orientation: {
           heading: Cesium.Math.toRadians(hdg),
-          pitch: Cesium.Math.toRadians(-10), // slight nose-down for realism
+          pitch: Cesium.Math.toRadians(-10),
           roll: 0.0
         }
       });
@@ -71,7 +71,6 @@
     }
   }
 
-  // Actualise la position toutes les 2 secondes
   setInterval(fetchPosition, 2000);
   fetchPosition();
 </script>
