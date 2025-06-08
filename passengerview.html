@@ -31,16 +31,17 @@
   <div id="logbox">🔄 Initialisation...</div>
 
   <script>
-    // Initialise Cesium Viewer sans terrain (ou terrain simple)
     const viewer = new Cesium.Viewer('cesiumContainer', {
-      terrainProvider: Cesium.createWorldTerrain(),
+      terrainProvider: new Cesium.CesiumTerrainProvider({
+        url: Cesium.IonResource.fromAssetId(1) // Terrain mondial
+      }),
       timeline: false,
       animation: false,
       baseLayerPicker: false
     });
 
     const logbox = document.getElementById("logbox");
-    const apiUrl = 'http://192.168.1.126:4000/api/position'; // URL complète de ton serveur distant Node.js
+    const apiUrl = 'http://192.168.1.126:4000/api/position';
 
     function log(msg) {
       logbox.innerText = msg;
@@ -62,7 +63,6 @@ Alt: ${alt} ft
 GS: ${groundspeed} kt
 HDG: ${hdg}°`);
 
-        // Positionner la caméra sur la position reçue
         viewer.camera.setView({
           destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt * 0.3048 + 100),
           orientation: {
@@ -76,7 +76,6 @@ HDG: ${hdg}°`);
       }
     }
 
-    // Actualise toutes les 2s
     setInterval(fetchPosition, 2000);
     fetchPosition();
   </script>
