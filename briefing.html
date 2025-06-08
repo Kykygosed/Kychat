@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Briefing - Vol MSFS2024</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 300px;
+    }
+    input, button {
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+    }
+    input {
+      background: #222;
+      color: white;
+    }
+    button {
+      background: #2979ff;
+      color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Briefing Pilote</h1>
+  <form id="briefingForm">
+    <input type="text" placeholder="Callsign" id="callsign" required>
+    <input type="text" placeholder="Nom du pilote" id="pilot" required>
+    <input type="text" placeholder="Compagnie" id="company" required>
+    <input type="text" placeholder="Départ (ICAO)" id="departure" required>
+    <input type="text" placeholder="Arrivée (ICAO)" id="arrival" required>
+    <button type="submit">Envoyer</button>
+  </form>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    document.getElementById("briefingForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const data = {
+        callsign: document.getElementById("callsign").value,
+        pilot: document.getElementById("pilot").value,
+        company: document.getElementById("company").value,
+        departure: document.getElementById("departure").value,
+        arrival: document.getElementById("arrival").value,
+      };
+      set(ref(db, "briefing/"), data)
+        .then(() => alert("Briefing envoyé avec succès !"))
+        .catch((err) => alert("Erreur : " + err));
+    });
+  </script>
+</body>
+</html>
