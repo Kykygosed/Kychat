@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flight Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; font-family: sans-serif; }
+    #map { width: 100%; height: 100%; }
+
+    #infoPanel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100%;
+      background: #111;
+      color: white;
+      padding: 15px;
+      overflow-y: auto;
+    }
+
+    .callsign {
+      color: #3d84ff;
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #333;
+      border-radius: 10px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #3d84ff;
+      transition: width 0.5s ease;
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+    .section-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #999;
+    }
+    .section-content {
+      background: #222;
+      padding: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="infoPanel">
+    <div class="callsign" id="callsign">CALLSIGN</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Flight Details</div>
+      <div class="section-content">
+        <div><strong>Pilot:</strong> <span id="pilot">(Pilote)</span></div>
+        <div><strong>Airline:</strong> <span id="company">(Compagnie)</span></div>
+        <div><strong>Route:</strong> <span id="departure">(DÉPART)</span> → <span id="arrival">(ARRIVÉE)</span></div>
+        <div><strong>Altitude:</strong> <span id="altitude">{Altitude}</span> ft</div>
+        <div><strong>Speed:</strong> <span id="speed">{Vitesse}</span> kt</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Config Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Initialiser la carte
+    const map = L.map('map').setView([48.85, 2.35], 5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const planeIcon = L.icon({
+      iconUrl: 'https://img.icons8.com/ios-filled/50/ffffff/airplane-take-off.png',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+    let planeMarker = L.marker([0, 0], { icon: planeIcon }).addTo(map);
+
+    // Écoute Firebase : Infos briefing
+    db.ref('briefing').on('value', (snap) => {
+      const data = snap.val();
+      if (data) {
+        document.getElementById('callsign').innerText = data.callsign || '-';
+        document.getElementById('pilot').innerText = data.pilot || '-';
+        document.getElementById('company').innerText = data.company || '-';
+        document.getElementById('departure').innerText = data.departure || '-';
+        document.getElementById('arrival').innerText = data.arrival || '-';
+      }
+    });
+
+    // Écoute Firebase : Position temps réel
+    db.ref('live').on('value', (snap) => {
+      const data = snap.val();
+      if (data) {
+        const lat = data.lat || 0;
+        const lon = data.lon || 0;
+        const alt = data.alt || 0;
+        const spd = data.speed || 0;
+        const progress = data.progress || 0;
+
+        planeMarker.setLatLng([lat, lon]);
+        map.setView([lat, lon]);
+
+        document.getElementById('altitude').innerText = Math.round(alt);
+        document.getElementById('speed').innerText = Math.round(spd);
+        document.getElementById('progress').style.width = progress + '%';
+      }
+    });
+  </script>
+</body>
+</html>
