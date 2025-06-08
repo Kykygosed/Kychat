@@ -1,107 +1,109 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<title>Sim MSFS - Vue Passager + Cesium + Logs</title>
-<!-- HEAD -->
-<script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-<style>
-  html, body {
-    margin: 0; padding: 0; height: 100%; overflow: hidden;
-    font-family: Arial, sans-serif;
-    background: #000;
-    color: #eee;
-  }
-  #cesiumContainer {
-    position: absolute; top: 0; left: 0; right: 300px; bottom: 0;
-  }
-  #logbox {
-    position: absolute;
-    top: 0; right: 0;
-    width: 300px; height: 100%;
-    background: #111;
-    overflow-y: auto;
-    padding: 10px;
-    box-sizing: border-box;
-    font-size: 14px;
-    border-left: 1px solid #444;
-  }
-  #logbox pre {
-    white-space: pre-wrap;
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>Vue Passager MSFS</title>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <style>
+    html, body, #cesiumContainer {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #logbox {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: lime;
+      padding: 10px;
+      font-size: 14px;
+      border-radius: 6px;
+      max-width: 300px;
+      max-height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    #callsign {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+  </style>
 </head>
 <body>
+  <div id="cesiumContainer"></div>
+  <div id="callsign">Volant en cours…</div>
+  <div id="logbox">🔄 Initialisation de la connexion à MSFS…</div>
 
-<div id="cesiumContainer"></div>
-<div id="logbox"><pre id="log"></pre></div>
+  <script>
+    // Clé API Cesium ion (gratuite, remplace par la tienne si nécessaire)
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
 
-<script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
-<script>
-  // Ta clé Cesium Ion (remplace par la tienne)
-  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
-
-  const logElement = document.getElementById('log');
-  function log(msg) {
-    const time = new Date().toLocaleTimeString();
-    logElement.textContent += `[${time}] ${msg}\n`;
-    logElement.scrollTop = logElement.scrollHeight;
-  }
-
-  log("Initialisation Cesium...");
-
-  // Création du viewer Cesium avec terrain réaliste
-  const viewer = new Cesium.Viewer('cesiumContainer', {
-    terrainProvider: Cesium.IonResource.fromAssetId(1).then(function(resource) {
-  return new Cesium.CesiumTerrainProvider({ url: resource });
-})
-
-
-  log("Cesium initialisé avec terrain WorldTerrain.");
-
-  // Position et orientation initiale (exemple Paris)
-  let position = {
-    lat: 48.8566,
-    lon: 2.3522,
-    alt: 3000
-  };
-  let pseudo = "KYKYGosed_off";
-  let flightNumber = "MSFS1234";
-
-  // Positionne la caméra sur la position initiale
-  function setCameraView(pos) {
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(pos.lon, pos.lat, pos.alt),
-      orientation: {
-        heading: 0,
-        pitch: Cesium.Math.toRadians(-35),
-        roll: 0
-      }
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrainProvider: Cesium.createWorldTerrain(),
+      timeline: false,
+      animation: false,
+      baseLayerPicker: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      infoBox: false,
+      selectionIndicator: false
     });
-    log(`Caméra positionnée sur lat: ${pos.lat.toFixed(4)}, lon: ${pos.lon.toFixed(4)}, alt: ${pos.alt}m`);
-  }
 
-  setCameraView(position);
+    const log = (txt) => {
+      const box = document.getElementById("logbox");
+      box.textContent = `🧭 ${txt}\n\n` + box.textContent;
+    };
 
-  // Simuler réception périodique de données (ex: de Volanta ou SimConnect)
-  function simulatePositionUpdate() {
-    // On déplace la position un peu (par exemple longitude + 0.001)
-    position.lon += 0.001;
+    const callsign = "MSFS Companion"; // Tu peux remplacer dynamiquement plus tard
+    document.getElementById("callsign").textContent = callsign;
 
-    // Mise à jour de la caméra
-    setCameraView(position);
+    // Suivi position MSFS
+    const ip = "192.168.1.126:4000";
+    const url = `http://${ip}/api/position`;
 
-    // Log update
-    log(`Position mise à jour - vol: ${flightNumber}, pilote: ${pseudo}`);
-  }
+    const updateInterval = 1000; // ms
+    let firstMove = true;
 
-  // Simuler réception toutes les 3 secondes
-  setInterval(simulatePositionUpdate, 3000);
+    setInterval(() => {
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          const lat = data.latitude;
+          const lon = data.longitude;
+          const alt = data.altitude;
 
-  log("Simulation de mise à jour de position démarrée.");
+          log(`Lat: ${lat.toFixed(5)}\nLon: ${lon.toFixed(5)}\nAlt: ${alt.toFixed(1)} ft`);
 
-</script>
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt + 300),
+            orientation: {
+              heading: Cesium.Math.toRadians(0),
+              pitch: Cesium.Math.toRadians(-30),
+              roll: 0
+            },
+            duration: firstMove ? 2.0 : 0.5
+          });
 
+          firstMove = false;
+        })
+        .catch(err => {
+          log("❌ Erreur de récupération MSFS:\n" + err.message);
+        });
+    }, updateInterval);
+  </script>
 </body>
 </html>
