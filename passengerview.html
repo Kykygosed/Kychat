@@ -2,8 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Cesium Terrain Réaliste avec Logbox et Clé API</title>
-  <script src="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Cesium.js"></script>
+  <title>Cesium avec clé API et logbox</title>
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
     html, body, #cesiumContainer {
@@ -41,9 +40,12 @@
   <div id="logBox">Initialisation Cesium...</div>
   <div id="info"></div>
 
+  <!-- Import Cesium JS en premier -->
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.109.1/Build/Cesium/Cesium.js"></script>
+
+  <!-- Ton script personnalisé APRES -->
   <script>
-    // *** REMPLACEZ ICI PAR VOTRE CLE API CESIUM ION ***
-    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4N2QzNDMyNy0yN2I5LTRjYTQtYWY4Ny0wMTJiYzMxMTg0NWUiLCJpZCI6MjExODk3LCJpYXQiOjE3NDkzODM4NjJ9.-gzSpbdgPagQUWw9PxgljLi-hQtVaohFj185K2XqvFs';
+    Cesium.Ion.defaultAccessToken = 'VOTRE_CESIUM_ION_ACCESS_TOKEN_ICI';
 
     const logBox = document.getElementById('logBox');
     const info = document.getElementById('info');
