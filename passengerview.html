@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <title>Sim MSFS - Vue Passager + Cesium + Logs</title>
+<!-- HEAD -->
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Cesium.js"></script>
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.111.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
 <style>
   html, body {
@@ -51,14 +53,10 @@
 
   // Création du viewer Cesium avec terrain réaliste
   const viewer = new Cesium.Viewer('cesiumContainer', {
-    terrainProvider: Cesium.createWorldTerrain(),
-    baseLayerPicker: false,
-    timeline: false,
-    animation: false,
-    infoBox: false,
-    selectionIndicator: false,
-    shouldAnimate: false
-  });
+    terrainProvider: Cesium.IonResource.fromAssetId(1).then(function(resource) {
+  return new Cesium.CesiumTerrainProvider({ url: resource });
+})
+
 
   log("Cesium initialisé avec terrain WorldTerrain.");
 
