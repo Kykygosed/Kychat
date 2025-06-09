@@ -1,0 +1,198 @@
+<!-- flightpanel.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Panneau de Vols</title>
+  <style>
+    body {
+      background: #002b4d;
+      font-family: monospace;
+      color: white;
+      text-align: center;
+    }
+
+    form {
+      margin-bottom: 30px;
+    }
+
+    input {
+      padding: 5px;
+      margin: 5px;
+    }
+
+    button {
+      padding: 5px 10px;
+      margin-top: 10px;
+    }
+
+    table {
+      width: 90%;
+      margin: auto;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+
+    tr:nth-child(even) {
+      background-color: #003b5c;
+    }
+
+    tr:nth-child(odd) {
+      background-color: #004d73;
+    }
+
+    select {
+      background-color: #001f33;
+      color: white;
+      border: none;
+      padding: 5px;
+    }
+
+    .green { color: #00ff00; }
+    .red { color: red; }
+    .orange { color: orange; }
+    .yellow { color: yellow; }
+
+    .blink {
+      animation: blink-animation 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink-animation {
+      to {
+        visibility: hidden;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Ajouter un vol</h1>
+  <form id="flightForm">
+    <input type="text" placeholder="Heure (ex: 20:08)" id="time" required>
+    <input type="text" placeholder="Destination" id="destination" required>
+    <input type="text" placeholder="Numéro de vol" id="flight" required>
+    <input type="text" placeholder="Porte" id="gate" required>
+    <button type="submit">Ajouter</button>
+  </form>
+
+  <h2>Vols existants</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>HEURE</th>
+        <th>DESTINATION</th>
+        <th>VOL</th>
+        <th>GATE</th>
+        <th>STATUT</th>
+      </tr>
+    </thead>
+    <tbody id="flightsList"></tbody>
+  </table>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import {
+      getDatabase, ref, push, onValue, update
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const form = document.getElementById("flightForm");
+    const flightsList = document.getElementById("flightsList");
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const time = document.getElementById("time").value;
+      const destination = document.getElementById("destination").value.toUpperCase();
+      const flight = document.getElementById("flight").value.toUpperCase();
+      const gate = document.getElementById("gate").value;
+
+      push(ref(db, 'flights'), {
+        time,
+        destination,
+        flight,
+        gate,
+        remarks: "A l’heure"
+      });
+
+      form.reset();
+    });
+
+    const getStatusClass = (status) => {
+      switch (status) {
+        case "A l’heure": return "green";
+        case "RETARD": return "yellow";
+        case "ANNULÉ": return "red";
+        case "EMBARQUEMENT":
+        case "FIN D’EMBARQUEMENT": return "orange";
+        case "ARRIVÉ": return "green";
+        default: return "";
+      }
+    }
+
+    const getBlink = (status) => {
+      return status === "FIN D’EMBARQUEMENT" ? "blink" : "";
+    }
+
+    const renderFlights = (snapshot) => {
+      flightsList.innerHTML = "";
+      snapshot.forEach(child => {
+        const key = child.key;
+        const data = child.val();
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${data.time}</td>
+          <td>${data.destination}</td>
+          <td>${data.flight}</td>
+          <td>${data.gate}</td>
+          <td>
+            <select data-id="${key}">
+              <option ${data.remarks === "A l’heure" ? "selected" : ""}>A l’heure</option>
+              <option ${data.remarks === "RETARD" ? "selected" : ""}>RETARD</option>
+              <option ${data.remarks === "ANNULÉ" ? "selected" : ""}>ANNULÉ</option>
+              <option ${data.remarks === "EMBARQUEMENT" ? "selected" : ""}>EMBARQUEMENT</option>
+              <option ${data.remarks === "FIN D’EMBARQUEMENT" ? "selected" : ""}>FIN D’EMBARQUEMENT</option>
+              <option ${data.remarks === "ARRIVÉ" ? "selected" : ""}>ARRIVÉ</option>
+            </select>
+            <span class="${getStatusClass(data.remarks)} ${getBlink(data.remarks)}">
+              ${data.remarks}
+            </span>
+          </td>
+        `;
+
+        flightsList.appendChild(tr);
+      });
+
+      // Handle select changes
+      document.querySelectorAll("select[data-id]").forEach(select => {
+        select.addEventListener("change", (e) => {
+          const id = e.target.getAttribute("data-id");
+          const newRemarks = e.target.value;
+          update(ref(db, 'flights/' + id), {
+            remarks: newRemarks
+          });
+        });
+      });
+    };
+
+    onValue(ref(db, 'flights'), (snapshot) => {
+      renderFlights(snapshot);
+    });
+  </script>
+</body>
+</html>
