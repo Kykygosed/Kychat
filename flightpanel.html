@@ -74,6 +74,13 @@
     <input type="text" placeholder="Destination" id="destination" required>
     <input type="text" placeholder="Numéro de vol" id="flight" required>
     <input type="text" placeholder="Porte" id="gate" required>
+    <select id="compagnie" required>
+  <option value="" disabled selected>Compagnie</option>
+  <option value="airfrance">Air France</option>
+  <option value="easyjet">easyJet</option>
+  <!-- Tu peux en ajouter d'autres ici -->
+</select>
+
     <button type="submit">Ajouter</button>
   </form>
 
@@ -114,22 +121,25 @@
     const flightsList = document.getElementById("flightsList");
 
     form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const time = document.getElementById("time").value;
-      const destination = document.getElementById("destination").value.toUpperCase();
-      const flight = document.getElementById("flight").value.toUpperCase();
-      const gate = document.getElementById("gate").value;
+  e.preventDefault();
+  const time = document.getElementById("time").value;
+  const destination = document.getElementById("destination").value.toUpperCase();
+  const flight = document.getElementById("flight").value.toUpperCase();
+  const gate = document.getElementById("gate").value;
+  const compagnie = document.getElementById("compagnie").value;
 
-      push(ref(db, 'flights'), {
-        time,
-        destination,
-        flight,
-        gate,
-        remarks: "A l’heure"
-      });
+  push(ref(db, 'flights'), {
+    time,
+    destination,
+    flight,
+    gate,
+    compagnie, // 🔥 on enregistre aussi la compagnie
+    remarks: "A l’heure"
+  });
 
-      form.reset();
-    });
+  form.reset();
+});
+
 
     const getStatusClass = (status) => {
       switch (status) {
