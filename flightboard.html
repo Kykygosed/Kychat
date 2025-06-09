@@ -12,7 +12,7 @@
     }
 
     table {
-      width: 90%;
+      width: 100%;
       margin: auto;
       border-collapse: collapse;
     }
@@ -57,6 +57,7 @@
       <tr>
         <th>HEURE</th>
         <th>DESTINATION</th>
+        <th>COMP.</th>
         <th>VOL</th>
         <th>GATE</th>
         <th>STATUT</th>
@@ -104,24 +105,39 @@
     }
 
     onValue(ref(db, 'flights'), (snapshot) => {
-      flightsBoard.innerHTML = "";
-      snapshot.forEach(child => {
-        const data = child.val();
-        const tr = document.createElement("tr");
+  flightsBoard.innerHTML = "";
+  snapshot.forEach(child => {
+    const data = child.val();
+    const tr = document.createElement("tr");
 
-        tr.innerHTML = `
-          <td>${data.time}</td>
-          <td>${data.destination}</td>
-          <td>${data.flight}</td>
-          <td>${data.gate}</td>
-          <td class="${getStatusClass(data.remarks)} ${getBlink(data.remarks)}">
-            ${data.remarks}
-          </td>
-        `;
+    const displayStatus = data.remarks === 'EN VOL' ? 'PARTI' : data.remarks;
+    const statusClass = data.remarks === 'EN VOL' ? 'red' : getStatusClass(data.remarks);
 
-        flightsBoard.appendChild(tr);
-      });
-    });
+    // Déterminer le logo de la compagnie
+    let logoSrc = "";
+    if (data.compagnie === "easyjet") {
+      logoSrc = "easyjet.png";
+    } else if (data.compagnie === "airfrance") {
+      logoSrc = "airfrance.png";
+    } else {
+      logoSrc = "defaultlogo.png"; // image par défaut si tu veux
+    }
+
+    tr.innerHTML = `
+      <td><img src="${logoSrc}" alt="${data.compagnie}" style="height: 30px;"></td>
+      <td>${data.time}</td>
+      <td>${data.destination}</td>
+      <td>${data.flight}</td>
+      <td>${data.gate}</td>
+      <td class="${statusClass} ${getBlink(data.remarks)}">
+        ${displayStatus}
+      </td>
+    `;
+
+    flightsBoard.appendChild(tr);
+  });
+});
+
   </script>
 </body>
 </html>
