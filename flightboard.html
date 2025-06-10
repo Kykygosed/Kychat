@@ -86,7 +86,6 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    import { onValue, ref } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
 // Écoute du jingle depuis Firebase
 onValue(ref(db, 'broadcast/jingle'), (snapshot) => {
