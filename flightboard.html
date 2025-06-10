@@ -47,6 +47,8 @@
   </style>
 </head>
 <body>
+  <audio id="jingleAudio" src="jingle.mp3"></audio>
+
   <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px;">
   <img src="flightslogo1.png" alt="Logo" style="height: 40px;">
   VOLS
@@ -84,6 +86,16 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+    import { onValue, ref } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+// Écoute du jingle depuis Firebase
+onValue(ref(db, 'broadcast/jingle'), (snapshot) => {
+  if (snapshot.val() === true) {
+    const audio = document.getElementById("jingleAudio");
+    audio.play().catch(e => console.warn("Échec de lecture audio :", e));
+  }
+});
+
 
     const flightsBoard = document.getElementById("flightsBoard");
 
