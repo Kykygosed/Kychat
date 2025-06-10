@@ -82,6 +82,8 @@
 </select>
 
     <button type="submit">Ajouter</button>
+    <button id="jingleBtn">🔊 Lancer le jingle</button>
+
   </form>
 
   <h2>Vols existants</h2>
@@ -203,6 +205,17 @@
     onValue(ref(db, 'flights'), (snapshot) => {
       renderFlights(snapshot);
     });
+    const jingleBtn = document.getElementById("jingleBtn");
+
+jingleBtn.addEventListener("click", () => {
+  update(ref(db, 'broadcast'), { jingle: true });
+
+  // Remise à false 2 secondes plus tard pour permettre de le rejouer plus tard
+  setTimeout(() => {
+    update(ref(db, 'broadcast'), { jingle: false });
+  }, 2000);
+});
+
   </script>
 </body>
 </html>
