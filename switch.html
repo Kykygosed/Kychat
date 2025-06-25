@@ -4,11 +4,50 @@
   <title>Switch Signs</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 50px;
+    }
+    h1 {
+      margin-bottom: 40px;
+      text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+    }
+    .btn {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 15px 30px;
+      margin: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      transition: transform 0.1s, background-color 0.3s;
+    }
+    .btn:hover {
+      background-color: #45a049;
+      transform: scale(1.05);
+    }
+    .btn-annonce {
+      background-color: #ff5722;
+    }
+    .btn-annonce:hover {
+      background-color: #e64a19;
+    }
+  </style>
 </head>
-<body style="text-align:center; font-family:sans-serif; margin-top:50px;">
+<body>
   <h1>Seatbelt & No Smoking Control</h1>
-  <button onclick="toggleSign('seatbelts')">Toggle Seatbelts</button>
-  <button onclick="toggleSign('nosmoking')">Toggle No Smoking</button>
+  <button class="btn" onclick="toggleSign('seatbelts')">Toggle Seatbelts</button>
+  <button class="btn" onclick="toggleSign('nosmoking')">Toggle No Smoking</button>
+  <button class="btn btn-annonce" onclick="playAnnouncement()">Annonce</button>
+
+  <audio id="announcementAudio" src="announcement.mp3"></audio>
 
   <script>
     const firebaseConfig = {
@@ -29,6 +68,11 @@
         const current = snapshot.val() || false;
         ref.set(!current);
       });
+    }
+
+    function playAnnouncement() {
+      const audio = document.getElementById('announcementAudio');
+      audio.play();
     }
   </script>
 </body>
