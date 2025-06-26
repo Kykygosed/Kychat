@@ -291,6 +291,52 @@
   };
 
   listAudioDevices();
+const talkingRef = db.ref('radioRoom/talking');
+
+// Mise à jour de l'interface selon qui parle
+talkingRef.on('value', snapshot => {
+  const currentSpeaker = snapshot.val();
+  if (currentSpeaker && currentSpeaker !== currentUserId) {
+    // Quelqu'un d'autre parle
+    pttBtn.disabled = true;
+    pttBtn.style.backgroundColor = '#555';
+    pttBtn.innerText = 'Parole occupée';
+  } else {
+    // Personne ne parle ou c'est nous
+    pttBtn.disabled = false;
+    pttBtn.style.backgroundColor = '#2b2';
+    pttBtn.innerText = 'Appuyer pour parler';
+  }
+});
+
+// PTT bouton: activer/désactiver audio local
+pttBtn.onpointerdown = () => {
+  if (!localStream) return;
+
+  talkingRef.once('value').then(snapshot => {
+    const currentSpeaker = snapshot.val();
+    if (currentSpeaker) {
+      alert('Une autre personne parle, veuillez attendre.');
+      return;
+    }
+
+    // Personne ne parle, on prend la parole
+    talkingRef.set(currentUserId);
+    localStream.getAudioTracks()[0].enabled = true;
+    pttBtn.style.backgroundColor = '#e33';
+  });
+};
+
+pttBtn.onpointerup = () => {
+  if (!localStream) return;
+  talkingRef.once('value').then(snapshot => {
+    if (snapshot.val() === currentUserId) {
+      talkingRef.set(null);
+    }
+  });
+  localStream.getAudioTracks()[0].enabled = false;
+  pttBtn.style.backgroundColor = '#2b2';
+};
 
 </script>
 
