@@ -37,6 +37,7 @@
     <div id="display">123.450</div>
 
     <select id="device-select"></select>
+    <button id="initMic">Activer le Micro</button>
 
     <div id="keypad">
         <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><br>
@@ -86,6 +87,7 @@ const userList = document.getElementById("user-list");
 const startScreen = document.getElementById("start-screen");
 const startBtn = document.getElementById("start-btn");
 const mainContent = document.getElementById("main-content");
+const initMicBtn = document.getElementById("initMic");
 
 startBtn.onclick = async () => {
     try {
@@ -108,6 +110,15 @@ function initApp() {
             deviceSelect.appendChild(opt);
         });
     });
+initMicBtn.onclick = async () => {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceSelect.value } });
+        console.log("Micro activé.");
+        initMicBtn.disabled = true;
+    } catch (err) {
+        console.error("Erreur d'activation du micro :", err);
+    }
+};
 
     let freqInput = "";
     keypad.addEventListener('click', e => {
