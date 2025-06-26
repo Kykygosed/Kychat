@@ -3,401 +3,283 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Radio WebRTC PTT with Firebase</title>
+<title>Radio PTT WebRTC simple</title>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #121212;
-    color: #eee;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-  }
-  select, button {
-    margin: 5px;
-    font-size: 1.1em;
-    padding: 8px 12px;
-    border-radius: 5px;
-    border: none;
-    outline: none;
-  }
-  button {
-    cursor: pointer;
-  }
-  button:active {
-    background-color: #44bb44;
-    color: white;
-  }
-  #status {
-    margin: 10px;
-    font-weight: bold;
-  }
-  #ptt {
-    font-size: 2em;
-    padding: 20px 40px;
-    background: #222;
-    border: 2px solid #555;
-    border-radius: 10px;
-    user-select: none;
-  }
-  #ptt.active {
-    background: #bb2222;
-    border-color: #ff5555;
-    color: white;
-  }
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  select, button { margin: 5px; padding: 10px; font-size: 1rem; }
+  #ptt { width: 200px; height: 50px; background: #2b2; color: white; border: none; border-radius: 5px; cursor: pointer; }
+  #ptt.inactive { background: #555; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
-<h1>Radio WebRTC PTT</h1>
+<h2>Radio WebRTC PTT simple</h2>
 
-<div>
-  <label>Microphone : </label>
-  <select id="inputSelect"></select>
-</div>
-<div>
-  <label>Sortie audio : </label>
-  <select id="outputSelect"></select>
-</div>
+<label for="audioIn">Micro (entrée) :</label>
+<select id="audioIn"></select>
 
-<button id="startStop">Activer Micro</button>
-<div id="status">Micro désactivé. Personne ne parle.</div>
+<label for="audioOut">Haut-parleur (sortie) :</label>
+<select id="audioOut"></select>
 
-<button id="ptt" disabled>Appuie et maintiens pour parler</button>
+<br>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<button id="join">Rejoindre la radio</button>
+<br><br>
+<button id="ptt" class="inactive" disabled>Appuyer pour parler</button>
+
+<audio id="remoteAudio" autoplay></audio>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-  // --- CONFIG FIREBASE --- 
-const firebaseConfig = {
-  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-  authDomain: "kylita-f2923.firebaseapp.com",
-  projectId: "kylita-f2923",
-  storageBucket: "kylita-f2923.appspot.com",
-  messagingSenderId: "431823530994",
-  appId: "1:431823530994:web:88a07e633751686e5ad96b",
-  measurementId: "G-F4LLNWQJ16",
-  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+  // --- Firebase config à remplacer par le tien ---
+  const firebaseConfig = {
+    apiKey: "TON_API_KEY",
+    authDomain: "TON_PROJET.firebaseapp.com",
+    databaseURL: "https://TON_PROJET-default-rtdb.firebaseio.com",
+    projectId: "TON_PROJET",
+    storageBucket: "TON_PROJET.appspot.com",
+    messagingSenderId: "TON_SENDER_ID",
+    appId: "TON_APP_ID"
+  };
 
-  // --- VARIABLES GLOBALES ---
-  const inputSelect = document.getElementById('inputSelect');
-  const outputSelect = document.getElementById('outputSelect');
-  const startStopBtn = document.getElementById('startStop');
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // DOM
+  const audioInSelect = document.getElementById('audioIn');
+  const audioOutSelect = document.getElementById('audioOut');
+  const joinBtn = document.getElementById('join');
   const pttBtn = document.getElementById('ptt');
-  const statusText = document.getElementById('status');
+  const remoteAudio = document.getElementById('remoteAudio');
 
   let localStream = null;
-  let localAudioTrack = null;
-  let audioContext = null;
-  let destinationNode = null;
-  let radioFilterNode = null;
-  let outputAudio = new Audio();
-  let userId = 'user_' + Math.floor(Math.random() * 1000000);
-  let speaking = false;
+  let pc = null;
+  let isTalking = false;
+  let currentUserId = null;
 
-  // WebRTC variables
-  let peers = {};
-  let localConnection = null;
-  let signalingRef = db.ref('radio_signaling');
-  let talkerRef = db.ref('radio_talker');
-  let usersRef = db.ref('radio_users');
+  // Pour limiter 1 personne qui parle à la fois
+  let talkingUserId = null;
 
-  // --- Fonctions ---
-  async function listDevices() {
+  // Préfixe Firebase pour signaux (à adapter selon la room)
+  const roomName = 'radioRoom';
+  const signalsRef = db.ref('signals/' + roomName);
+
+  // Fonction pour lister les périphériques audio
+  async function listAudioDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
+    audioInSelect.innerHTML = '';
+    audioOutSelect.innerHTML = '';
 
-    // Clear selects
-    inputSelect.innerHTML = '';
-    outputSelect.innerHTML = '';
-
-    devices.forEach(d => {
+    devices.forEach(device => {
       const option = document.createElement('option');
-      option.value = d.deviceId;
-      option.text = d.label || (d.kind === 'audioinput' ? 'Microphone' : 'Haut-parleur');
-      if (d.kind === 'audioinput') {
-        inputSelect.appendChild(option);
-      } else if (d.kind === 'audiooutput') {
-        outputSelect.appendChild(option);
+      option.value = device.deviceId;
+
+      if(device.kind === 'audioinput'){
+        option.text = device.label || `Microphone ${audioInSelect.length + 1}`;
+        audioInSelect.appendChild(option);
+      }
+      else if(device.kind === 'audiooutput'){
+        option.text = device.label || `Haut-parleur ${audioOutSelect.length + 1}`;
+        audioOutSelect.appendChild(option);
       }
     });
   }
 
-  async function getLocalStream() {
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
-    const constraints = {
-      audio: {
-        deviceId: inputSelect.value ? {exact: inputSelect.value} : undefined
-      }
-    };
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localAudioTrack = localStream.getAudioTracks()[0];
-      pttBtn.disabled = false;
-      statusText.textContent = "Micro activé, prêt à parler.";
-    } catch(e) {
-      alert("Erreur accès micro : " + e.message);
-      pttBtn.disabled = true;
+  // Appliquer le périphérique de sortie audio
+  function setAudioOutput(deviceId) {
+    if(typeof remoteAudio.sinkId !== 'undefined'){
+      remoteAudio.setSinkId(deviceId).catch(e => {
+        console.warn('Erreur setSinkId:', e);
+      });
+    } else {
+      console.warn('setSinkId non supporté par ce navigateur.');
     }
   }
 
-  // Fonction pour appliquer effet radio à un MediaStreamAudioSourceNode
-  function createRadioFilter(audioCtx, sourceNode) {
-    // Exemple : un filtre bandpass étroit, un peu de distorsion, et un EQ basique
-    const bandpass = audioCtx.createBiquadFilter();
-    bandpass.type = 'bandpass';
-    bandpass.frequency.value = 1000;
-    bandpass.Q.value = 10;
+  // Obtenir le flux audio local selon la sélection
+  async function getLocalStream() {
+    if(localStream){
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
+    const audioSource = audioInSelect.value;
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioSource ? { exact: audioSource } : undefined } });
+      // Initialement mute, on parle seulement quand PTT est appuyé
+      localStream.getAudioTracks()[0].enabled = false;
+      return localStream;
+    } catch(e) {
+      alert('Erreur accès micro : ' + e.message);
+      throw e;
+    }
+  }
+
+  // Créer un RTCPeerConnection avec gestion ICE
+  function createPeerConnection() {
+    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    const connection = new RTCPeerConnection(config);
+
+    connection.onicecandidate = event => {
+      if(event.candidate){
+        signalsRef.child(currentUserId + '/ice').push(JSON.stringify(event.candidate));
+      }
+    };
+
+    connection.ontrack = event => {
+      // On va appliquer un effet audio radio ici
+      const remoteStream = event.streams[0];
+      applyRadioEffect(remoteStream);
+    };
+
+    return connection;
+  }
+
+  // Appliquer un effet radio simple avec Web Audio API
+  function applyRadioEffect(stream) {
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+
+    // Baisser les basses, augmenter les médiums et un peu de distorsion
+    const biquadFilter = audioCtx.createBiquadFilter();
+    biquadFilter.type = "bandpass";
+    biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime); // fréquence centrée vers médiums
 
     const distortion = audioCtx.createWaveShaper();
-    distortion.curve = makeDistortionCurve(400);
+    function makeDistortionCurve(amount = 20) {
+      const n_samples = 44100;
+      const curve = new Float32Array(n_samples);
+      for(let i = 0; i < n_samples; ++i){
+        const x = i * 2 / n_samples - 1;
+        curve[i] = (3 + amount) * x * 20 * Math.PI / (Math.PI + amount * Math.abs(x));
+      }
+      return curve;
+    }
+    distortion.curve = makeDistortionCurve(15);
     distortion.oversample = '4x';
 
     const gainNode = audioCtx.createGain();
     gainNode.gain.value = 0.8;
 
-    sourceNode.connect(bandpass);
-    bandpass.connect(distortion);
+    source.connect(biquadFilter);
+    biquadFilter.connect(distortion);
     distortion.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
 
-    return gainNode;
+    // connecter à l'élément audio HTML
+    const dest = audioCtx.createMediaStreamDestination();
+    gainNode.connect(dest);
+    remoteAudio.srcObject = dest.stream;
   }
 
-  function makeDistortionCurve(amount) {
-    const k = typeof amount === 'number' ? amount : 50;
-    const n_samples = 44100;
-    const curve = new Float32Array(n_samples);
-    const deg = Math.PI / 180;
-    for (let i = 0; i < n_samples; ++i ) {
-      const x = i * 2 / n_samples - 1;
-      curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
-    }
-    return curve;
+  // Envoie un message signal via Firebase
+  function sendSignal(type, data) {
+    signalsRef.child(currentUserId + '/' + type).push(data);
   }
 
-  function setupAudioContext() {
-    if (audioContext) audioContext.close();
-    audioContext = new AudioContext();
+  // Ecoute des signaux entrants des autres
+  function listenSignals() {
+    signalsRef.on('child_added', async snapshot => {
+      const userId = snapshot.key;
+      if(userId === currentUserId) return; // ignorer soi-même
 
-    destinationNode = audioContext.createMediaStreamDestination();
-  }
+      const userSignalsRef = signalsRef.child(userId);
 
-  // Setup output audio device
-  function setOutputDevice(deviceId) {
-    if (typeof outputAudio.setSinkId !== 'undefined') {
-      outputAudio.setSinkId(deviceId)
-      .then(() => {
-        console.log("Sortie audio définie : " + deviceId);
-      })
-      .catch(e => console.warn("Erreur setSinkId:", e));
-    } else {
-      console.warn("setSinkId non supporté par ce navigateur");
-    }
-  }
-
-  // --- SIGNALISATION / WEBSOCKET (via Firebase) ---
-  // On stocke dans firebase les offres/answers/ICE candidates entre peers
-  // Ici on fait un mesh simple, chaque nouvel utilisateur crée une peer connection avec tous les autres
-
-  // Référence aux users connectés
-  let users = {};
-  let isTalking = false;
-
-  async function createPeerConnection(peerId, isOfferer) {
-    const pc = new RTCPeerConnection({
-      iceServers: [{urls:'stun:stun.l.google.com:19302'}]
-    });
-
-    // Ajout du stream local (uniquement si micro activé)
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
+      // On écoute les offres, réponses et ICE du remote
+      userSignalsRef.child('offer').on('child_added', async snapOffer => {
+        if(pc.signalingState === 'stable') {
+          const offer = JSON.parse(snapOffer.val());
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          sendSignal('answer', JSON.stringify(pc.localDescription));
+        }
       });
-    }
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const candRef = db.ref(`radio_signaling/${userId}/${peerId}/candidates`);
-        candRef.push(event.candidate.toJSON());
-      }
-    };
+      userSignalsRef.child('answer').on('child_added', async snapAnswer => {
+        const answer = JSON.parse(snapAnswer.val());
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      });
 
-    pc.ontrack = (event) => {
-      // Ici on reçoit le stream de l'autre utilisateur
-      const remoteStream = event.streams[0];
-      playRemoteStream(peerId, remoteStream);
-    };
+      userSignalsRef.child('ice').on('child_added', async snapIce => {
+        const candidate = JSON.parse(snapIce.val());
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch(e) {
+          console.warn('Erreur addIceCandidate:', e);
+        }
+      });
+    });
+  }
 
-    if (isOfferer) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await db.ref(`radio_signaling/${userId}/${peerId}/offer`).set(pc.localDescription.toJSON());
-    }
+  // Initialisation et join
+  joinBtn.onclick = async () => {
+    joinBtn.disabled = true;
+    currentUserId = 'user' + Math.floor(Math.random()*1000000);
 
-    // Ecoute answer et candidats venant du peer
-    db.ref(`radio_signaling/${peerId}/${userId}`).on('value', async snapshot => {
-      const data = snapshot.val();
-      if (!data) return;
+    localStream = await getLocalStream();
 
-      if (data.answer && !pc.currentRemoteDescription) {
-        const answerDesc = new RTCSessionDescription(data.answer);
-        await pc.setRemoteDescription(answerDesc);
-      }
+    pc = createPeerConnection();
 
-      if (data.candidates) {
-        Object.values(data.candidates).forEach(async cand => {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(cand));
-          } catch (e) {
-            console.warn('addIceCandidate error', e);
-          }
-        });
-      }
+    // Ajouter piste audio locale au peer connection
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream);
     });
 
-    return pc;
-  }
+    // Create offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal('offer', JSON.stringify(pc.localDescription));
 
-  // Jouer le son de l'autre avec effet radio
-  function playRemoteStream(peerId, stream) {
-    // Crée un audio context si nécessaire
-    if (!audioContext) setupAudioContext();
+    listenSignals();
 
-    const source = audioContext.createMediaStreamSource(stream);
-    const filtered = createRadioFilter(audioContext, source);
-
-    filtered.connect(destinationNode);
-
-    outputAudio.srcObject = destinationNode.stream;
-    outputAudio.play();
-
-    // Garde la référence pour cleanup si besoin (non implémenté ici)
-  }
-
-  // Gérer la liste users connectés dans Firebase
-  usersRef.child(userId).set({online: true});
-  usersRef.child(userId).onDisconnect().remove();
-
-  // Surveillance de qui parle (talker)
-  talkerRef.on('value', snap => {
-    const talker = snap.val();
-    if (!talker) {
-      statusText.textContent = "Micro activé, personne ne parle.";
-      pttBtn.disabled = false;
-    } else if (talker === userId) {
-      statusText.textContent = "Tu parles.";
-      pttBtn.classList.add('active');
-      pttBtn.disabled = false;
-      isTalking = true;
-    } else {
-      statusText.textContent = `L'utilisateur ${talker} parle.`;
-      pttBtn.disabled = true;
-      pttBtn.classList.remove('active');
-      isTalking = false;
-    }
-  });
-
-  // Start/Stop micro
-  startStopBtn.onclick = async () => {
-    if (!localStream) {
-      await getLocalStream();
-      startStopBtn.textContent = "Désactiver Micro";
-      await connectToPeers();
-    } else {
-      stopLocalStream();
-      startStopBtn.textContent = "Activer Micro";
-      pttBtn.disabled = true;
-    }
+    pttBtn.disabled = false;
+    pttBtn.classList.remove('inactive');
   };
 
-  function stopLocalStream() {
-    if (localStream) {
+  // PTT bouton: activer/désactiver audio local
+  pttBtn.onpointerdown = () => {
+    if(!localStream) return;
+    if(talkingUserId && talkingUserId !== currentUserId){
+      alert('Une autre personne parle, veuillez attendre.');
+      return;
+    }
+    isTalking = true;
+    talkingUserId = currentUserId;
+    localStream.getAudioTracks()[0].enabled = true;
+    pttBtn.style.backgroundColor = '#e33';
+  };
+
+  pttBtn.onpointerup = () => {
+    if(!localStream) return;
+    isTalking = false;
+    talkingUserId = null;
+    localStream.getAudioTracks()[0].enabled = false;
+    pttBtn.style.backgroundColor = '#2b2';
+  };
+
+  // Sélecteurs de périphériques
+  audioInSelect.onchange = async () => {
+    if(localStream){
       localStream.getTracks().forEach(t => t.stop());
       localStream = null;
-      localAudioTrack = null;
     }
-    // Quitter la parole si on était en train de parler
-    if (isTalking) {
-      talkerRef.set(null);
+    if(pc){
+      pc.close();
+      pc = null;
     }
-  }
-
-  // Connecter aux autres users (mesh simple)
-  async function connectToPeers() {
-    // Récupère la liste des users en ligne sauf toi
-    const snapshot = await usersRef.get();
-    users = snapshot.val() || {};
-
-    for (const otherUserId in users) {
-      if (otherUserId !== userId && !peers[otherUserId]) {
-        const pc = await createPeerConnection(otherUserId, true);
-        peers[otherUserId] = pc;
-      }
-    }
-
-    // Ecoute les offres venant des autres pour créer la connexion
-    signalingRef.child(userId).on('child_added', async snap => {
-      const fromUser = snap.key;
-      if (fromUser === userId) return;
-
-      if (!peers[fromUser]) {
-        const pc = await createPeerConnection(fromUser, false);
-        peers[fromUser] = pc;
-      }
-    });
-  }
-
-  // PTT - Push To Talk
-  pttBtn.onpointerdown = async () => {
-    if (isTalking) return; // tu parles déjà
-
-    const talker = (await talkerRef.get()).val();
-    if (!talker) {
-      await talkerRef.set(userId);
-      pttBtn.classList.add('active');
-      isTalking = true;
-      statusText.textContent = "Tu parles.";
-    } else {
-      alert("Quelqu'un parle déjà !");
-    }
+    joinBtn.disabled = false;
+    pttBtn.disabled = true;
+    pttBtn.classList.add('inactive');
   };
 
-  pttBtn.onpointerup = async () => {
-    if (isTalking) {
-      await talkerRef.set(null);
-      pttBtn.classList.remove('active');
-      isTalking = false;
-      statusText.textContent = "Micro activé, personne ne parle.";
-    }
+  audioOutSelect.onchange = () => {
+    setAudioOutput(audioOutSelect.value);
   };
 
-  // Sélecteurs périphériques
-  inputSelect.onchange = async () => {
-    if (localStream) {
-      await getLocalStream();
-      // TODO : mettre à jour la piste audio sur les PeerConnections ?
-      // (Plus complexe, hors scope simple ici)
-    }
-  };
-
-  outputSelect.onchange = () => {
-    setOutputDevice(outputSelect.value);
-  };
-
-  // Init
-  listDevices();
-
-  // Fix pour que le user change périphériques
-  navigator.mediaDevices.ondevicechange = () => {
-    listDevices();
-  };
+  // Au chargement, liste les devices
+  listAudioDevices();
 
 </script>
 
