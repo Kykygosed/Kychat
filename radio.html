@@ -32,313 +32,207 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<script>
-  // --- Firebase config à remplacer par le tien ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, set, push, get, remove, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDDH3yMEr78C_h0yAMiEXYVtENmiwMbxas",
     authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.firebasestorage.app",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
+    storageBucket: "kykychat-24c7f.appspot.com",
+    messagingSenderId: "248801360563",
+    appId: "1:248801360563:web:bdd019dd49805236c84310"
+};
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-  // DOM
-  const audioInSelect = document.getElementById('audioIn');
-  const audioOutSelect = document.getElementById('audioOut');
-  const joinBtn = document.getElementById('join');
-  const pttBtn = document.getElementById('ptt');
-  const remoteAudio = document.getElementById('remoteAudio');
+const currentUserId = prompt('Enter your callsign:');
+const localAudio = document.getElementById('localAudio');
+const remoteAudio = document.getElementById('remoteAudio');
+const pttBtn = document.getElementById('pttBtn');
+const talkingRef = ref(db, 'radioRoom/talking');
 
-  let localStream = null;
-  let pc = null;
-  let isTalking = false;
-  let currentUserId = null;
+let localStream;
+let peerConnections = {}; // Gestion multi-connexions
+let currentRemoteUserId = null;
 
-  // Pour limiter 1 personne qui parle à la fois
-  let talkingUserId = null;
+// Obtenir le flux audio local
+navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+        localStream = stream;
+        localAudio.srcObject = stream;
 
-  // Buffer candidats ICE reçus avant setRemoteDescription
-  let remoteCandidatesBuffer = [];
+        // Mute par défaut
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = false;
+        });
 
-  // Préfixe Firebase pour signaux (à adapter selon la room)
-  const roomName = 'radioRoom';
-  const signalsRef = db.ref('signals/' + roomName);
+        // Annoncer sa présence
+        const userRef = ref(db, `radioRoom/users/${currentUserId}`);
+        set(userRef, true);
 
-  async function listAudioDevices() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    audioInSelect.innerHTML = '';
-    audioOutSelect.innerHTML = '';
+        // Gestion des nouveaux utilisateurs
+        onValue(ref(db, 'radioRoom/users'), snapshot => {
+            const users = snapshot.val() || {};
+            Object.keys(users).forEach(userId => {
+                if (userId !== currentUserId && !peerConnections[userId]) {
+                    console.log('Connexion à :', userId);
+                    startConnection(userId);
+                }
+            });
+        });
+    })
+    .catch(error => console.error('Erreur d’accès au micro :', error));
 
-    devices.forEach(device => {
-      const option = document.createElement('option');
-      option.value = device.deviceId;
+// Fonction pour démarrer une connexion WebRTC
+function startConnection(remoteUserId) {
+    currentRemoteUserId = remoteUserId;
 
-      if(device.kind === 'audioinput'){
-        option.text = device.label || `Microphone ${audioInSelect.length + 1}`;
-        audioInSelect.appendChild(option);
-      }
-      else if(device.kind === 'audiooutput'){
-        option.text = device.label || `Haut-parleur ${audioOutSelect.length + 1}`;
-        audioOutSelect.appendChild(option);
-      }
-    });
-  }
+    const peerConnection = new RTCPeerConnection();
+    peerConnections[remoteUserId] = peerConnection;
 
-  function setAudioOutput(deviceId) {
-    if(typeof remoteAudio.sinkId !== 'undefined'){
-      remoteAudio.setSinkId(deviceId).catch(e => {
-        console.warn('Erreur setSinkId:', e);
-      });
-    } else {
-      console.warn('setSinkId non supporté par ce navigateur.');
-    }
-  }
-
-  async function getLocalStream() {
-    if(localStream){
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
-    const audioSource = audioInSelect.value;
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioSource ? { exact: audioSource } : undefined } });
-      localStream.getAudioTracks()[0].enabled = false;
-      return localStream;
-    } catch(e) {
-      alert('Erreur accès micro : ' + e.message);
-      throw e;
-    }
-  }
-
-  function createPeerConnection() {
-    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    const connection = new RTCPeerConnection(config);
-
-    connection.onicecandidate = event => {
-      if(event.candidate){
-        signalsRef.child(currentUserId + '/ice').push(JSON.stringify(event.candidate));
-      }
-    };
-
-    connection.ontrack = event => {
-      const remoteStream = event.streams[0];
-      applyRadioEffect(remoteStream);
-    };
-
-    return connection;
-  }
-
-  function applyRadioEffect(stream) {
-    const audioCtx = new AudioContext();
-    const source = audioCtx.createMediaStreamSource(stream);
-
-    const biquadFilter = audioCtx.createBiquadFilter();
-    biquadFilter.type = "bandpass";
-    biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime);
-
-    const distortion = audioCtx.createWaveShaper();
-    function makeDistortionCurve(amount = 20) {
-      const n_samples = 44100;
-      const curve = new Float32Array(n_samples);
-      for(let i = 0; i < n_samples; ++i){
-        const x = i * 2 / n_samples - 1;
-        curve[i] = (3 + amount) * x * 20 * Math.PI / (Math.PI + amount * Math.abs(x));
-      }
-      return curve;
-    }
-    distortion.curve = makeDistortionCurve(15);
-    distortion.oversample = '4x';
-
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.value = 0.8;
-
-    source.connect(biquadFilter);
-    biquadFilter.connect(distortion);
-    distortion.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    const dest = audioCtx.createMediaStreamDestination();
-    gainNode.connect(dest);
-    remoteAudio.srcObject = dest.stream;
-  }
-
-  function sendSignal(type, data) {
-    signalsRef.child(currentUserId + '/' + type).push(data);
-  }
-
-  function listenSignals() {
-    signalsRef.on('child_added', async snapshot => {
-      const userId = snapshot.key;
-      if(userId === currentUserId) return;
-
-      const userSignalsRef = signalsRef.child(userId);
-
-      userSignalsRef.child('offer').on('child_added', async snapOffer => {
-        if(pc.signalingState === 'stable') {
-          const offer = JSON.parse(snapOffer.val());
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-          // Après setRemoteDescription, on traite le buffer des candidats
-          for(const candidate of remoteCandidatesBuffer){
-            try {
-              await pc.addIceCandidate(candidate);
-            } catch(e) {
-              console.warn('Erreur addIceCandidate buffered:', e);
-            }
-          }
-          remoteCandidatesBuffer = [];
-
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          sendSignal('answer', JSON.stringify(pc.localDescription));
-        }
-      });
-
-      userSignalsRef.child('answer').on('child_added', async snapAnswer => {
-        const answer = JSON.parse(snapAnswer.val());
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-
-        // Après setRemoteDescription, on traite le buffer des candidats
-        for(const candidate of remoteCandidatesBuffer){
-          try {
-            await pc.addIceCandidate(candidate);
-          } catch(e) {
-            console.warn('Erreur addIceCandidate buffered:', e);
-          }
-        }
-        remoteCandidatesBuffer = [];
-      });
-
-      userSignalsRef.child('ice').on('child_added', async snapIce => {
-        const candidate = JSON.parse(snapIce.val());
-        if(pc.remoteDescription && pc.remoteDescription.type){
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch(e) {
-            console.warn('Erreur addIceCandidate:', e);
-          }
-        } else {
-          // Bufferiser si remoteDescription pas encore définie
-          remoteCandidatesBuffer.push(new RTCIceCandidate(candidate));
-        }
-      });
-    });
-  }
-
-  joinBtn.onclick = async () => {
-    joinBtn.disabled = true;
-    currentUserId = 'user' + Math.floor(Math.random()*1000000);
-
-    localStream = await getLocalStream();
-
-    pc = createPeerConnection();
-
+    // Ajouter les pistes audio locales
     localStream.getTracks().forEach(track => {
-      pc.addTrack(track, localStream);
+        peerConnection.addTrack(track, localStream);
     });
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    sendSignal('offer', JSON.stringify(pc.localDescription));
+    // Gestion ICE
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            push(ref(db, `radioRoom/candidates/${remoteUserId}/${currentUserId}`), JSON.stringify(event.candidate));
+        }
+    };
 
-    listenSignals();
+    // Réception des flux distants
+    peerConnection.ontrack = event => {
+        console.log('Flux reçu de', remoteUserId);
+        remoteAudio.srcObject = event.streams[0];
+    };
 
-    pttBtn.disabled = false;
-    pttBtn.classList.remove('inactive');
-  };
+    // Écoute des candidats entrants
+    onChildAdded(ref(db, `radioRoom/candidates/${currentUserId}/${remoteUserId}`), snapshot => {
+        const candidate = JSON.parse(snapshot.val());
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
 
-  pttBtn.onpointerdown = () => {
-    if(!localStream) return;
-    if(talkingUserId && talkingUserId !== currentUserId){
-      alert('Une autre personne parle, veuillez attendre.');
-      return;
-    }
-    isTalking = true;
-    talkingUserId = currentUserId;
-    localStream.getAudioTracks()[0].enabled = true;
-    pttBtn.style.backgroundColor = '#e33';
-  };
+    // Signaling offer/answer
+    createOffer(remoteUserId, peerConnection);
+}
 
-  pttBtn.onpointerup = () => {
-    if(!localStream) return;
-    isTalking = false;
-    talkingUserId = null;
-    localStream.getAudioTracks()[0].enabled = false;
-    pttBtn.style.backgroundColor = '#2b2';
-  };
+// Création de l’offre
+async function createOffer(remoteUserId, peerConnection) {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    set(ref(db, `radioRoom/offers/${remoteUserId}`), {
+        from: currentUserId,
+        sdp: offer.sdp
+    });
+}
 
-  audioInSelect.onchange = async () => {
-    if(localStream){
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
-    if(pc){
-      pc.close();
-      pc = null;
-    }
-    joinBtn.disabled = false;
-    pttBtn.disabled = true;
-    pttBtn.classList.add('inactive');
-  };
+// Réception d’offre et création de l’answer
+onValue(ref(db, `radioRoom/offers/${currentUserId}`), async snapshot => {
+    const offerData = snapshot.val();
+    if (!offerData) return;
 
-  audioOutSelect.onchange = () => {
-    setAudioOutput(audioOutSelect.value);
-  };
+    const remoteUserId = offerData.from;
 
-  listAudioDevices();
-const talkingRef = db.ref('radioRoom/talking');
+    if (peerConnections[remoteUserId]) return;
 
-// Mise à jour de l'interface selon qui parle
-talkingRef.on('value', snapshot => {
-  const currentSpeaker = snapshot.val();
-  if (currentSpeaker && currentSpeaker !== currentUserId) {
-    // Quelqu'un d'autre parle
-    pttBtn.disabled = true;
-    pttBtn.style.backgroundColor = '#555';
-    pttBtn.innerText = 'Parole occupée';
-  } else {
-    // Personne ne parle ou c'est nous
-    pttBtn.disabled = false;
-    pttBtn.style.backgroundColor = '#2b2';
-    pttBtn.innerText = 'Appuyer pour parler';
-  }
+    console.log('Réception offre de', remoteUserId);
+
+    const peerConnection = new RTCPeerConnection();
+    peerConnections[remoteUserId] = peerConnection;
+
+    // Ajouter les pistes locales
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    // Gestion ICE
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            push(ref(db, `radioRoom/candidates/${remoteUserId}/${currentUserId}`), JSON.stringify(event.candidate));
+        }
+    };
+
+    // Réception du flux distant
+    peerConnection.ontrack = event => {
+        console.log('Flux reçu de', remoteUserId);
+        remoteAudio.srcObject = event.streams[0];
+    };
+
+    // Écoute des candidats entrants
+    onChildAdded(ref(db, `radioRoom/candidates/${currentUserId}/${remoteUserId}`), snapshot => {
+        const candidate = JSON.parse(snapshot.val());
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerData.sdp }));
+
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    set(ref(db, `radioRoom/answers/${remoteUserId}`), {
+        from: currentUserId,
+        sdp: answer.sdp
+    });
 });
 
-// PTT bouton: activer/désactiver audio local
-pttBtn.onpointerdown = () => {
-  if (!localStream) return;
+// Réception de l’answer
+onValue(ref(db, `radioRoom/answers/${currentUserId}`), async snapshot => {
+    const answerData = snapshot.val();
+    if (!answerData) return;
 
-  talkingRef.once('value').then(snapshot => {
-    const currentSpeaker = snapshot.val();
-    if (currentSpeaker) {
-      alert('Une autre personne parle, veuillez attendre.');
-      return;
+    const remoteUserId = answerData.from;
+    const peerConnection = peerConnections[remoteUserId];
+
+    if (!peerConnection.currentRemoteDescription) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerData.sdp }));
+        console.log('Answer reçue de', remoteUserId);
     }
+});
 
-    // Personne ne parle, on prend la parole
-    talkingRef.set(currentUserId);
-    localStream.getAudioTracks()[0].enabled = true;
-    pttBtn.style.backgroundColor = '#e33';
-  });
+// Gestion PTT
+pttBtn.onpointerdown = () => {
+    if (!localStream) return;
+
+    talkingRef.once('value').then(snapshot => {
+        const currentSpeaker = snapshot.val();
+        if (currentSpeaker && currentSpeaker !== currentUserId) {
+            alert('Une autre personne parle, veuillez attendre.');
+            return;
+        }
+
+        talkingRef.set(currentUserId);
+
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = true;
+        });
+
+        pttBtn.style.backgroundColor = '#e33';
+    });
 };
 
 pttBtn.onpointerup = () => {
-  if (!localStream) return;
-  talkingRef.once('value').then(snapshot => {
-    if (snapshot.val() === currentUserId) {
-      talkingRef.set(null);
-    }
-  });
-  localStream.getAudioTracks()[0].enabled = false;
-  pttBtn.style.backgroundColor = '#2b2';
+    if (!localStream) return;
+
+    talkingRef.once('value').then(snapshot => {
+        if (snapshot.val() === currentUserId) {
+            talkingRef.set(null);
+        }
+    });
+
+    localStream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+    });
+
+    pttBtn.style.backgroundColor = '#2b2';
 };
 
 </script>
+
 
 
 </body>
