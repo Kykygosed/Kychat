@@ -38,6 +38,8 @@
 
     <select id="device-select"></select>
     <button id="initMic">Activer le Micro</button>
+    <label for="outputSelect">Sortie Audio :</label>
+    <select id="outputSelect"></select>
 
     <div id="keypad">
         <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><br>
@@ -88,6 +90,9 @@ const startScreen = document.getElementById("start-screen");
 const startBtn = document.getElementById("start-btn");
 const mainContent = document.getElementById("main-content");
 const initMicBtn = document.getElementById("initMic");
+const outputSelect = document.getElementById("outputSelect");
+
+
 
 startBtn.onclick = async () => {
     try {
@@ -118,6 +123,30 @@ initMicBtn.onclick = async () => {
     } catch (err) {
         console.error("Erreur d'activation du micro :", err);
     }
+};
+navigator.mediaDevices.enumerateDevices().then(devices => {
+    devices.forEach(device => {
+        if (device.kind === 'audiooutput') {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.text = device.label || `Sortie ${outputSelect.length + 1}`;
+            outputSelect.appendChild(option);
+        }
+    });
+});
+    outputSelect.onchange = () => {
+    const selectedOutput = outputSelect.value;
+    document.querySelectorAll("audio").forEach(audioElem => {
+        if (typeof audioElem.setSinkId === 'function') {
+            audioElem.setSinkId(selectedOutput).then(() => {
+                console.log(`Sortie audio définie sur ${selectedOutput}`);
+            }).catch(err => {
+                console.warn("Impossible de définir la sortie :", err);
+            });
+        } else {
+            console.warn("setSinkId non supporté par ce navigateur.");
+        }
+    });
 };
 
     let freqInput = "";
