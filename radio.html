@@ -1,240 +1,133 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Radio PTT WebRTC simple</title>
-<style>
-  body { font-family: Arial, sans-serif; padding: 20px; }
-  select, button { margin: 5px; padding: 10px; font-size: 1rem; }
-  #ptt { width: 200px; height: 50px; background: #2b2; color: white; border: none; border-radius: 5px; cursor: pointer; }
-  #ptt.inactive { background: #555; cursor: not-allowed; }
-</style>
+    <meta charset="UTF-8">
+    <title>Radio WebRTC</title>
+    <style>
+        body { background: #111; color: white; text-align: center; font-family: Arial, sans-serif; }
+        #pttBtn { padding: 15px 30px; background: #2b2; border: none; border-radius: 10px; font-size: 18px; cursor: pointer; margin-top: 20px; }
+        #pttBtn:active { background: #e33; }
+    </style>
 </head>
 <body>
+    <h1>Radio WebRTC</h1>
+    <audio id="remoteAudio" autoplay></audio>
+    <button id="pttBtn">Push-to-Talk</button>
 
-<h2>Radio WebRTC PTT simple</h2>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, set, push, onChildAdded, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-<label for="audioIn">Micro (entrée) :</label>
-<select id="audioIn"></select>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDDH3yMEr78C_h0yAMiEXYVtENmiwMbxas",
+            authDomain: "kykychat-24c7f.firebaseapp.com",
+            databaseURL: "https://kykychat-24c7f-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "kykychat-24c7f",
+            storageBucket: "kykychat-24c7f.appspot.com",
+            messagingSenderId: "248801360563",
+            appId: "1:248801360563:web:bdd019dd49805236c84310"
+        };
 
-<label for="audioOut">Haut-parleur (sortie) :</label>
-<select id="audioOut"></select>
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
 
-<br>
+        const userId = prompt("Votre indicatif ?");
+        const pttBtn = document.getElementById("pttBtn");
+        const remoteAudio = document.getElementById("remoteAudio");
 
-<button id="join">Rejoindre la radio</button>
-<br><br>
-<button id="ptt" class="inactive" disabled>Appuyer pour parler</button>
+        let localStream;
+        let peerConnection;
 
-<audio id="remoteAudio" autoplay></audio>
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                localStream = stream;
+                localStream.getAudioTracks()[0].enabled = false; // Micro coupé par défaut
+                announcePresence();
+            })
+            .catch(err => console.error("Erreur accès micro:", err));
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+        function announcePresence() {
+            set(ref(db, `radio/users/${userId}`), true);
+            listenForOffers();
+        }
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, onValue, set, push, get, remove, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        function listenForOffers() {
+            onChildAdded(ref(db, "radio/offers"), async snapshot => {
+                const data = snapshot.val();
+                if (data.to === userId) {
+                    peerConnection = new RTCPeerConnection();
 
-const firebaseConfig = {
-    apiKey: "AIzaSyDDH3yMEr78C_h0yAMiEXYVtENmiwMbxas",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.appspot.com",
-    messagingSenderId: "248801360563",
-    appId: "1:248801360563:web:bdd019dd49805236c84310"
-};
+                    peerConnection.onicecandidate = e => {
+                        if (e.candidate) push(ref(db, `radio/candidates/${data.from}/${userId}`), JSON.stringify(e.candidate));
+                    };
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+                    peerConnection.ontrack = e => {
+                        remoteAudio.srcObject = e.streams[0];
+                    };
 
-const currentUserId = prompt('Enter your callsign:');
-const localAudio = document.getElementById('localAudio');
-const remoteAudio = document.getElementById('remoteAudio');
-const pttBtn = document.getElementById('pttBtn');
-const talkingRef = ref(db, 'radioRoom/talking');
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-let localStream;
-let peerConnections = {}; // Gestion multi-connexions
-let currentRemoteUserId = null;
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    set(ref(db, `radio/answers/${data.from}`), { from: userId, answer });
 
-// Obtenir le flux audio local
-navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
-        localStream = stream;
-        localAudio.srcObject = stream;
-
-        // Mute par défaut
-        localStream.getAudioTracks().forEach(track => {
-            track.enabled = false;
-        });
-
-        // Annoncer sa présence
-        const userRef = ref(db, `radioRoom/users/${currentUserId}`);
-        set(userRef, true);
-
-        // Gestion des nouveaux utilisateurs
-        onValue(ref(db, 'radioRoom/users'), snapshot => {
-            const users = snapshot.val() || {};
-            Object.keys(users).forEach(userId => {
-                if (userId !== currentUserId && !peerConnections[userId]) {
-                    console.log('Connexion à :', userId);
-                    startConnection(userId);
+                    listenForCandidates(data.from);
                 }
             });
+        }
+
+        function call(target) {
+            peerConnection = new RTCPeerConnection();
+
+            peerConnection.onicecandidate = e => {
+                if (e.candidate) push(ref(db, `radio/candidates/${userId}/${target}`), JSON.stringify(e.candidate));
+            };
+
+            peerConnection.ontrack = e => {
+                remoteAudio.srcObject = e.streams[0];
+            };
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.createOffer()
+                .then(offer => {
+                    peerConnection.setLocalDescription(offer);
+                    set(ref(db, `radio/offers/${userId}`), { from: userId, to: target, offer });
+                    listenForCandidates(target);
+                });
+
+            onValue(ref(db, `radio/answers/${userId}`), snapshot => {
+                const data = snapshot.val();
+                if (data && data.from === target) {
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                }
+            });
+        }
+
+        function listenForCandidates(otherId) {
+            onChildAdded(ref(db, `radio/candidates/${otherId}/${userId}`), snap => {
+                const candidate = JSON.parse(snap.val());
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
+        }
+
+        // Push-to-Talk
+        pttBtn.onpointerdown = () => {
+            if (localStream) localStream.getAudioTracks()[0].enabled = true;
+            pttBtn.style.background = "#e33";
+        };
+
+        pttBtn.onpointerup = () => {
+            if (localStream) localStream.getAudioTracks()[0].enabled = false;
+            pttBtn.style.background = "#2b2";
+        };
+
+        // Appel automatique sur clic utilisateur distant (simulé)
+        onChildAdded(ref(db, "radio/users"), snap => {
+            const targetId = snap.key;
+            if (targetId !== userId) call(targetId);
         });
-    })
-    .catch(error => console.error('Erreur d’accès au micro :', error));
-
-// Fonction pour démarrer une connexion WebRTC
-function startConnection(remoteUserId) {
-    currentRemoteUserId = remoteUserId;
-
-    const peerConnection = new RTCPeerConnection();
-    peerConnections[remoteUserId] = peerConnection;
-
-    // Ajouter les pistes audio locales
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    // Gestion ICE
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            push(ref(db, `radioRoom/candidates/${remoteUserId}/${currentUserId}`), JSON.stringify(event.candidate));
-        }
-    };
-
-    // Réception des flux distants
-    peerConnection.ontrack = event => {
-        console.log('Flux reçu de', remoteUserId);
-        remoteAudio.srcObject = event.streams[0];
-    };
-
-    // Écoute des candidats entrants
-    onChildAdded(ref(db, `radioRoom/candidates/${currentUserId}/${remoteUserId}`), snapshot => {
-        const candidate = JSON.parse(snapshot.val());
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-
-    // Signaling offer/answer
-    createOffer(remoteUserId, peerConnection);
-}
-
-// Création de l’offre
-async function createOffer(remoteUserId, peerConnection) {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    set(ref(db, `radioRoom/offers/${remoteUserId}`), {
-        from: currentUserId,
-        sdp: offer.sdp
-    });
-}
-
-// Réception d’offre et création de l’answer
-onValue(ref(db, `radioRoom/offers/${currentUserId}`), async snapshot => {
-    const offerData = snapshot.val();
-    if (!offerData) return;
-
-    const remoteUserId = offerData.from;
-
-    if (peerConnections[remoteUserId]) return;
-
-    console.log('Réception offre de', remoteUserId);
-
-    const peerConnection = new RTCPeerConnection();
-    peerConnections[remoteUserId] = peerConnection;
-
-    // Ajouter les pistes locales
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    // Gestion ICE
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            push(ref(db, `radioRoom/candidates/${remoteUserId}/${currentUserId}`), JSON.stringify(event.candidate));
-        }
-    };
-
-    // Réception du flux distant
-    peerConnection.ontrack = event => {
-        console.log('Flux reçu de', remoteUserId);
-        remoteAudio.srcObject = event.streams[0];
-    };
-
-    // Écoute des candidats entrants
-    onChildAdded(ref(db, `radioRoom/candidates/${currentUserId}/${remoteUserId}`), snapshot => {
-        const candidate = JSON.parse(snapshot.val());
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-
-    await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerData.sdp }));
-
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    set(ref(db, `radioRoom/answers/${remoteUserId}`), {
-        from: currentUserId,
-        sdp: answer.sdp
-    });
-});
-
-// Réception de l’answer
-onValue(ref(db, `radioRoom/answers/${currentUserId}`), async snapshot => {
-    const answerData = snapshot.val();
-    if (!answerData) return;
-
-    const remoteUserId = answerData.from;
-    const peerConnection = peerConnections[remoteUserId];
-
-    if (!peerConnection.currentRemoteDescription) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerData.sdp }));
-        console.log('Answer reçue de', remoteUserId);
-    }
-});
-
-// Gestion PTT
-pttBtn.onpointerdown = () => {
-    if (!localStream) return;
-
-    talkingRef.once('value').then(snapshot => {
-        const currentSpeaker = snapshot.val();
-        if (currentSpeaker && currentSpeaker !== currentUserId) {
-            alert('Une autre personne parle, veuillez attendre.');
-            return;
-        }
-
-        talkingRef.set(currentUserId);
-
-        localStream.getAudioTracks().forEach(track => {
-            track.enabled = true;
-        });
-
-        pttBtn.style.backgroundColor = '#e33';
-    });
-};
-
-pttBtn.onpointerup = () => {
-    if (!localStream) return;
-
-    talkingRef.once('value').then(snapshot => {
-        if (snapshot.val() === currentUserId) {
-            talkingRef.set(null);
-        }
-    });
-
-    localStream.getAudioTracks().forEach(track => {
-        track.enabled = false;
-    });
-
-    pttBtn.style.backgroundColor = '#2b2';
-};
-
-</script>
-
-
-
+    </script>
 </body>
 </html>
-
