@@ -34,16 +34,15 @@
 
 <script>
   // --- Firebase config à remplacer par le tien ---
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-  authDomain: "kykychat-24c7f.firebaseapp.com",
-  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-  projectId: "kykychat-24c7f",
-  storageBucket: "kykychat-24c7f.firebasestorage.app",
-  messagingSenderId: "342562811927",
-  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.firebasestorage.app",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  };
 
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
@@ -63,11 +62,13 @@ const firebaseConfig = {
   // Pour limiter 1 personne qui parle à la fois
   let talkingUserId = null;
 
+  // Buffer candidats ICE reçus avant setRemoteDescription
+  let remoteCandidatesBuffer = [];
+
   // Préfixe Firebase pour signaux (à adapter selon la room)
   const roomName = 'radioRoom';
   const signalsRef = db.ref('signals/' + roomName);
 
-  // Fonction pour lister les périphériques audio
   async function listAudioDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
     audioInSelect.innerHTML = '';
@@ -88,7 +89,6 @@ const firebaseConfig = {
     });
   }
 
-  // Appliquer le périphérique de sortie audio
   function setAudioOutput(deviceId) {
     if(typeof remoteAudio.sinkId !== 'undefined'){
       remoteAudio.setSinkId(deviceId).catch(e => {
@@ -99,7 +99,6 @@ const firebaseConfig = {
     }
   }
 
-  // Obtenir le flux audio local selon la sélection
   async function getLocalStream() {
     if(localStream){
       localStream.getTracks().forEach(t => t.stop());
@@ -108,7 +107,6 @@ const firebaseConfig = {
     const audioSource = audioInSelect.value;
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioSource ? { exact: audioSource } : undefined } });
-      // Initialement mute, on parle seulement quand PTT est appuyé
       localStream.getAudioTracks()[0].enabled = false;
       return localStream;
     } catch(e) {
@@ -117,7 +115,6 @@ const firebaseConfig = {
     }
   }
 
-  // Créer un RTCPeerConnection avec gestion ICE
   function createPeerConnection() {
     const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
     const connection = new RTCPeerConnection(config);
@@ -129,7 +126,6 @@ const firebaseConfig = {
     };
 
     connection.ontrack = event => {
-      // On va appliquer un effet audio radio ici
       const remoteStream = event.streams[0];
       applyRadioEffect(remoteStream);
     };
@@ -137,15 +133,13 @@ const firebaseConfig = {
     return connection;
   }
 
-  // Appliquer un effet radio simple avec Web Audio API
   function applyRadioEffect(stream) {
     const audioCtx = new AudioContext();
     const source = audioCtx.createMediaStreamSource(stream);
 
-    // Baisser les basses, augmenter les médiums et un peu de distorsion
     const biquadFilter = audioCtx.createBiquadFilter();
     biquadFilter.type = "bandpass";
-    biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime); // fréquence centrée vers médiums
+    biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime);
 
     const distortion = audioCtx.createWaveShaper();
     function makeDistortionCurve(amount = 20) {
@@ -168,30 +162,37 @@ const firebaseConfig = {
     distortion.connect(gainNode);
     gainNode.connect(audioCtx.destination);
 
-    // connecter à l'élément audio HTML
     const dest = audioCtx.createMediaStreamDestination();
     gainNode.connect(dest);
     remoteAudio.srcObject = dest.stream;
   }
 
-  // Envoie un message signal via Firebase
   function sendSignal(type, data) {
     signalsRef.child(currentUserId + '/' + type).push(data);
   }
 
-  // Ecoute des signaux entrants des autres
   function listenSignals() {
     signalsRef.on('child_added', async snapshot => {
       const userId = snapshot.key;
-      if(userId === currentUserId) return; // ignorer soi-même
+      if(userId === currentUserId) return;
 
       const userSignalsRef = signalsRef.child(userId);
 
-      // On écoute les offres, réponses et ICE du remote
       userSignalsRef.child('offer').on('child_added', async snapOffer => {
         if(pc.signalingState === 'stable') {
           const offer = JSON.parse(snapOffer.val());
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+          // Après setRemoteDescription, on traite le buffer des candidats
+          for(const candidate of remoteCandidatesBuffer){
+            try {
+              await pc.addIceCandidate(candidate);
+            } catch(e) {
+              console.warn('Erreur addIceCandidate buffered:', e);
+            }
+          }
+          remoteCandidatesBuffer = [];
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           sendSignal('answer', JSON.stringify(pc.localDescription));
@@ -201,20 +202,34 @@ const firebaseConfig = {
       userSignalsRef.child('answer').on('child_added', async snapAnswer => {
         const answer = JSON.parse(snapAnswer.val());
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+        // Après setRemoteDescription, on traite le buffer des candidats
+        for(const candidate of remoteCandidatesBuffer){
+          try {
+            await pc.addIceCandidate(candidate);
+          } catch(e) {
+            console.warn('Erreur addIceCandidate buffered:', e);
+          }
+        }
+        remoteCandidatesBuffer = [];
       });
 
       userSignalsRef.child('ice').on('child_added', async snapIce => {
         const candidate = JSON.parse(snapIce.val());
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch(e) {
-          console.warn('Erreur addIceCandidate:', e);
+        if(pc.remoteDescription && pc.remoteDescription.type){
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch(e) {
+            console.warn('Erreur addIceCandidate:', e);
+          }
+        } else {
+          // Bufferiser si remoteDescription pas encore définie
+          remoteCandidatesBuffer.push(new RTCIceCandidate(candidate));
         }
       });
     });
   }
 
-  // Initialisation et join
   joinBtn.onclick = async () => {
     joinBtn.disabled = true;
     currentUserId = 'user' + Math.floor(Math.random()*1000000);
@@ -223,12 +238,10 @@ const firebaseConfig = {
 
     pc = createPeerConnection();
 
-    // Ajouter piste audio locale au peer connection
     localStream.getTracks().forEach(track => {
       pc.addTrack(track, localStream);
     });
 
-    // Create offer
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     sendSignal('offer', JSON.stringify(pc.localDescription));
@@ -239,7 +252,6 @@ const firebaseConfig = {
     pttBtn.classList.remove('inactive');
   };
 
-  // PTT bouton: activer/désactiver audio local
   pttBtn.onpointerdown = () => {
     if(!localStream) return;
     if(talkingUserId && talkingUserId !== currentUserId){
@@ -260,7 +272,6 @@ const firebaseConfig = {
     pttBtn.style.backgroundColor = '#2b2';
   };
 
-  // Sélecteurs de périphériques
   audioInSelect.onchange = async () => {
     if(localStream){
       localStream.getTracks().forEach(t => t.stop());
@@ -279,10 +290,10 @@ const firebaseConfig = {
     setAudioOutput(audioOutSelect.value);
   };
 
-  // Au chargement, liste les devices
   listAudioDevices();
 
 </script>
+
 
 </body>
 </html>
