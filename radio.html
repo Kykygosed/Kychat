@@ -12,31 +12,45 @@
         #ptt.active { background: green; color: white; }
         #ptt.disabled { background: grey; color: darkred; cursor: not-allowed; }
         #device-select { margin: 10px; }
+        #users { color: white; margin-top: 20px; }
+        #start-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; }
+        #start-screen button { font-size: 25px; padding: 15px 30px; margin-top: 20px; }
+        #main-content { display: none; }
     </style>
 </head>
 <body>
 
-<div id="freq-list">
-    <b>Liste des fréquences importantes:</b><br>
-    153.890 - KLTA_TOWER<br>
-    153.750 - KLTA_ATIS<br>
-    153.310 - UNICOM
+<div id="start-screen">
+    <h1>Bienvenue sur la Radio Minecraft</h1>
+    <p>Appuyez ci-dessous pour autoriser le micro et commencer</p>
+    <button id="start-btn">Autoriser le micro</button>
 </div>
 
-<div id="display">123.450</div>
+<div id="main-content">
+    <div id="freq-list">
+        <b>Liste des fréquences importantes:</b><br>
+        153.890 - KLTA_TOWER<br>
+        153.750 - KLTA_ATIS<br>
+        153.310 - UNICOM
+    </div>
 
-<select id="device-select"></select>
+    <div id="display">123.450</div>
 
-<div id="keypad">
-    <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><br>
-    <button>6</button><button>7</button><button>8</button><button>9</button><button>0</button>
-    <button>.</button>
-    <button id="go">GO</button>
+    <select id="device-select"></select>
+
+    <div id="keypad">
+        <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><br>
+        <button>6</button><button>7</button><button>8</button><button>9</button><button>0</button>
+        <button>.</button>
+        <button id="go">GO</button>
+    </div>
+
+    <button id="ptt" class="disabled">PTT</button>
+
+    <div id="users">Connectés: <span id="user-list"></span></div>
+
+    <audio id="noise" src="noise.mp3"></audio>
 </div>
-
-<button id="ptt" class="disabled">PTT</button>
-
-<audio id="noise" src="noise.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
@@ -50,7 +64,8 @@ const firebaseConfig = {
   storageBucket: "kylita-f2923.appspot.com",
   messagingSenderId: "431823530994",
   appId: "1:431823530994:web:88a07e633751686e5ad96b",
-  measurementId: "G-F4LLNWQJ16"
+  measurementId: "G-F4LLNWQJ16",
+  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -67,53 +82,71 @@ const keypad = document.getElementById("keypad");
 const go = document.getElementById("go");
 const deviceSelect = document.getElementById("device-select");
 const noise = document.getElementById("noise");
+const userList = document.getElementById("user-list");
+const startScreen = document.getElementById("start-screen");
+const startBtn = document.getElementById("start-btn");
+const mainContent = document.getElementById("main-content");
 
-navigator.mediaDevices.enumerateDevices().then(devices => {
-    devices.filter(d => d.kind === 'audioinput').forEach(d => {
-        let opt = document.createElement("option");
-        opt.value = d.deviceId;
-        opt.textContent = d.label || "Micro";
-        deviceSelect.appendChild(opt);
-    });
-});
-
-let freqInput = "";
-keypad.addEventListener('click', e => {
-    if (e.target.tagName === 'BUTTON' && e.target.textContent !== "GO") {
-        freqInput += e.target.textContent;
-        display.textContent = freqInput;
-    }
-});
-go.onclick = () => {
-    if (freqInput.length > 0) {
-        leaveFreq(currentFreq);
-        currentFreq = freqInput;
-        joinFreq(currentFreq);
-        display.textContent = currentFreq;
-        freqInput = "";
+startBtn.onclick = async () => {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStream.getTracks().forEach(t => t.stop());
+        startScreen.style.display = "none";
+        mainContent.style.display = "block";
+        initApp();
+    } catch (err) {
+        alert("Vous devez autoriser le micro pour utiliser la radio.");
     }
 };
 
-ptt.onclick = () => {
-    if (isTalking) {
-        stopTalk();
-    } else {
-        db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
-            if (!snap.val()) {
-                startTalk();
-            }
+function initApp() {
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+        devices.filter(d => d.kind === 'audioinput').forEach(d => {
+            let opt = document.createElement("option");
+            opt.value = d.deviceId;
+            opt.textContent = d.label || "Micro ";
+            deviceSelect.appendChild(opt);
         });
-    }
-};
+    });
+
+    let freqInput = "";
+    keypad.addEventListener('click', e => {
+        if (e.target.tagName === 'BUTTON' && e.target.textContent !== "GO") {
+            freqInput += e.target.textContent;
+            display.textContent = freqInput;
+        }
+    });
+
+    go.onclick = () => {
+        if (freqInput.length > 0) {
+            leaveFreq(currentFreq);
+            currentFreq = freqInput;
+            joinFreq(currentFreq);
+            display.textContent = currentFreq;
+            freqInput = "";
+        }
+    };
+
+    ptt.onmousedown = startTalk;
+    ptt.ontouchstart = startTalk;
+    ptt.onmouseup = stopTalk;
+    ptt.ontouchend = stopTalk;
+
+    joinFreq(currentFreq);
+}
 
 function startTalk() {
-    db.ref(`freq/${currentFreq}/talking`).set(userId);
-    ptt.classList.add("active");
-    isTalking = true;
-    startStream().then(() => {
-        for (let peerId in peerConnections) {
-            const pc = peerConnections[peerId];
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
+        if (!snap.val()) {
+            db.ref(`freq/${currentFreq}/talking`).set(userId);
+            ptt.classList.add("active");
+            isTalking = true;
+            startStream().then(() => {
+                for (let peerId in peerConnections) {
+                    const pc = peerConnections[peerId];
+                    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                }
+            });
         }
     });
 }
@@ -134,15 +167,15 @@ function joinFreq(freq) {
         if (speaker && speaker !== userId) {
             ptt.classList.add("disabled");
         } else {
-            if (!isTalking) ptt.classList.remove("disabled");
+            ptt.classList.remove("disabled");
         }
     });
 
     db.ref(`freq/${freq}/users/${userId}`).set(true);
     db.ref(`freq/${freq}/users/${userId}`).onDisconnect().remove();
-
     db.ref(`freq/${freq}/users`).on('value', snap => {
         const users = Object.keys(snap.val() || {});
+        userList.textContent = users.join(", ");
         users.forEach(uid => {
             if (uid !== userId && !peerConnections[uid]) {
                 createPeerConnection(uid);
@@ -163,10 +196,6 @@ function leaveFreq(freq) {
 
 async function startStream() {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceSelect.value } });
-    // On s'entend soi-même
-    const audio = new Audio();
-    audio.srcObject = localStream;
-    audio.play();
 }
 
 function stopStream() {
@@ -221,8 +250,6 @@ function createPeerConnection(peerId) {
         pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
     });
 }
-
-joinFreq(currentFreq);
 </script>
 </body>
 </html>
