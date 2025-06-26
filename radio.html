@@ -176,6 +176,9 @@ navigator.mediaDevices.enumerateDevices().then(devices => {
 }
 
 function startTalk() {
+    const safeFreq = selectedFreq.replace(/\./g, "_");
+    database.ref(`freq/${safeFreq}/talking`).set(true);
+    console.log("Micro activé.");
     db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
         if (!snap.val()) {
             db.ref(`freq/${currentFreq}/talking`).set(userId);
