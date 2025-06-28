@@ -25,14 +25,79 @@
       height: 100%;
       border: none;
     }
+    #seatbelts {
+      position: absolute;
+      left: 25%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      display: none;
+    }
+    #nosmoking {
+      position: absolute;
+      right: 25%;
+      top: 50%;
+      transform: translate(50%, -50%);
+      width: 100px;
+      display: none;
+    }
   </style>
 </head>
 <body>
-
+  <img id="seatbelts" src="seatbelts.png" alt="Seatbelts Sign">
+  <img id="nosmoking" src="nosmoking.png" alt="No Smoking Sign">
+  <audio id="chime" src="chime.mp3" preload="auto"></audio>
 <div class="container">
   <!-- Remplace l'URL par celle de ton live YouTube -->
   <iframe src="https://www.youtube.com/embed/ID_DU_LIVE?autoplay=1&mute=1&controls=0&showinfo=0&modestbranding=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 </div>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
+    const seatbeltsImg = document.getElementById('seatbelts');
+    const nosmokingImg = document.getElementById('nosmoking');
+    const chime = document.getElementById('chime');
+
+    let previousState = { seatbelts: null, nosmoking: null };
+
+    function playChime() {
+      chime.currentTime = 0;
+      chime.play().catch(() => {
+        // Autoplay protection (ignore silently)
+      });
+    }
+
+    db.ref('signs/seatbelts').on('value', snapshot => {
+      const val = snapshot.val();
+      seatbeltsImg.style.display = val ? 'block' : 'none';
+
+      if (previousState.seatbelts !== null && previousState.seatbelts !== val) {
+        playChime();
+      }
+
+      previousState.seatbelts = val;
+    });
+
+    db.ref('signs/nosmoking').on('value', snapshot => {
+      const val = snapshot.val();
+      nosmokingImg.style.display = val ? 'block' : 'none';
+
+      if (previousState.nosmoking !== null && previousState.nosmoking !== val) {
+        playChime();
+      }
+
+      previousState.nosmoking = val;
+    });
+  </script>
 </body>
 </html>
