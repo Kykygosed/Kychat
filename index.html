@@ -41,10 +41,11 @@
       font-weight: bold;
     }
 
-    .reserve-btn {
+    .reserve-btn, .admin-btn {
       background-color: #007bff;
       color: white;
-      padding: 12px 25px;
+      padding: 10px 20px;
+      margin: 5px;
       border: none;
       border-radius: 5px;
       font-size: 16px;
@@ -52,8 +53,32 @@
       transition: background 0.3s;
     }
 
-    .reserve-btn:hover {
+    .reserve-btn:hover, .admin-btn:hover {
       background-color: #0056b3;
+    }
+
+    #admin-panel {
+      background: rgba(0,0,0,0.7);
+      padding: 20px;
+      border-radius: 10px;
+      color: white;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #admin-panel input {
+      margin: 5px;
+      padding: 8px;
+      width: 200px;
+    }
+
+    #admin-panel button {
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -70,6 +95,25 @@
 </div>
 
 <button class="reserve-btn" id="reserve">Réserver ma place</button>
+<button class="admin-btn" id="admin">Admin</button>
+
+<!-- Admin Panel -->
+<div id="admin-panel">
+  <div id="code-section">
+    <p>Code Admin :</p>
+    <input type="password" id="admin-code" placeholder="Code...">
+    <button id="code-validate">Valider</button>
+  </div>
+
+  <div id="edit-section" style="display:none;">
+    <input type="text" id="edit-depart" placeholder="Départ">
+    <input type="text" id="edit-destination" placeholder="Destination">
+    <input type="text" id="edit-flight" placeholder="Numéro de vol">
+    <input type="text" id="edit-gate" placeholder="Porte">
+    <input type="text" id="edit-heure" placeholder="Heure">
+    <button id="save-flight">Enregistrer</button>
+  </div>
+</div>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
@@ -91,10 +135,20 @@ const firebaseConfig = {
 
   const nameField = document.getElementById('passenger-name');
   const btnReserve = document.getElementById('reserve');
+  const btnAdmin = document.getElementById('admin');
+  const adminPanel = document.getElementById('admin-panel');
+  const codeSection = document.getElementById('code-section');
+  const editSection = document.getElementById('edit-section');
+
+  const inputDepart = document.getElementById('edit-depart');
+  const inputDest = document.getElementById('edit-destination');
+  const inputFlight = document.getElementById('edit-flight');
+  const inputGate = document.getElementById('edit-gate');
+  const inputHeure = document.getElementById('edit-heure');
 
   const flightRef = db.ref("vols/actuel");
 
-  // Charger les infos du vol
+  // Charger infos vol
   flightRef.on("value", snapshot => {
     const data = snapshot.val();
 
@@ -106,7 +160,8 @@ const firebaseConfig = {
 
     if (data.finished === true) {
       btnReserve.style.display = "none";
-      alert("Le vol a déjà commencé, vous ne pouvez plus réserver.");
+    } else {
+      btnReserve.style.display = "inline-block";
     }
   });
 
@@ -114,11 +169,41 @@ const firebaseConfig = {
     const name = prompt("Entrez votre nom pour le Boarding Pass :");
     if (name && name.trim() !== "") {
       nameField.textContent = name;
-      alert("Votre ticket est réservé. Redirection...");
       window.location.href = "boarding.html";
     } else {
       alert("Veuillez entrer un nom valide.");
     }
+  });
+
+  btnAdmin.addEventListener("click", () => {
+    adminPanel.style.display = "flex";
+  });
+
+  document.getElementById('code-validate').addEventListener("click", () => {
+    const code = document.getElementById('admin-code').value;
+    if (code === "5395") {
+      codeSection.style.display = "none";
+      editSection.style.display = "flex";
+    } else {
+      alert("Code incorrect.");
+    }
+  });
+
+  document.getElementById('save-flight').addEventListener("click", () => {
+    const newData = {
+      depart: inputDepart.value || "...",
+      destination: inputDest.value || "...",
+      numero: inputFlight.value || "...",
+      gate: inputGate.value || "...",
+      heure: inputHeure.value || "...",
+      finished: false
+    };
+    flightRef.set(newData);
+    alert("Informations du vol mises à jour.");
+    adminPanel.style.display = "none";
+    editSection.style.display = "none";
+    codeSection.style.display = "flex";
+    document.getElementById('admin-code').value = "";
   });
 </script>
 
