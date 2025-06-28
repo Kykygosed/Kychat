@@ -1,51 +1,58 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Boarding</title>
-  <style>
-    body {
-      background: #000;
-      color: #fff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      font-family: Arial, sans-serif;
-      font-size: 28px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>Boarding</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            background: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 2em;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
 
 <div>En attente du pilote...</div>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
+<!-- Firebase v8 compatible CDN -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-  authDomain: "kykychat-24c7f.firebaseapp.com",
-  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-  projectId: "kykychat-24c7f",
-  storageBucket: "kykychat-24c7f.firebasestorage.app",
-  messagingSenderId: "342562811927",
-  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-};
+    // Configuration Firebase (remplace avec tes infos)
+    const firebaseConfig = {
+        apiKey: "VOTRE_API_KEY",
+        authDomain: "VOTRE_PROJET.firebaseapp.com",
+        databaseURL: "https://VOTRE_PROJET.firebaseio.com",
+        projectId: "VOTRE_PROJET",
+        storageBucket: "VOTRE_PROJET.appspot.com",
+        messagingSenderId: "VOTRE_ID",
+        appId: "VOTRE_APP_ID"
+    };
 
-  const app = firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    // Initialisation Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-  // Écoute en temps réel le status du vol
-  db.ref("vols/actuel/finished").on("value", snapshot => {
-    if (snapshot.val() === true) {
-      window.location.href = "flight.html";
-    }
-  });
+    // Écoute du champ "finished"
+    db.ref("vol/finished").on("value", (snapshot) => {
+        const finished = snapshot.val();
+        if (finished === true) {
+            window.location.href = "flight.html";
+        }
+    });
 </script>
 
 </body>
 </html>
+
