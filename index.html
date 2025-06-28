@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Réservation MSFS</title>
+  <style>
+    body {
+      background: #f0f0f0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .boarding-container {
+      position: relative;
+      width: 600px;
+      height: 200px;
+      background: url('boardingpass.png') no-repeat center/contain;
+    }
+
+    .info {
+      position: absolute;
+      color: #000;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    #passengerName {
+      top: 45px;
+      left: 130px;
+    }
+
+    #flight {
+      top: 45px;
+      left: 340px;
+    }
+
+    #destination {
+      top: 85px;
+      left: 130px;
+    }
+
+    #departure {
+      top: 85px;
+      left: 340px;
+    }
+
+    #time {
+      top: 125px;
+      left: 130px;
+    }
+
+    #gate {
+      top: 125px;
+      left: 340px;
+    }
+
+    .reserve-btn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #007BFF;
+      color: #fff;
+      border: none;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    /* Popup */
+    .popup {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+    }
+
+    .popup-content {
+      background: #fff;
+      padding: 20px;
+      text-align: center;
+      border-radius: 8px;
+    }
+
+    .popup input {
+      padding: 10px;
+      width: 200px;
+      margin-top: 10px;
+    }
+
+    .popup button {
+      margin-top: 15px;
+      padding: 8px 16px;
+      background: #28a745;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="boarding-container">
+  <div id="passengerName" class="info">NOM PASSAGER</div>
+  <div id="flight" class="info">VOL</div>
+  <div id="destination" class="info">DESTINATION</div>
+  <div id="departure" class="info">DÉPART</div>
+  <div id="time" class="info">HEURE</div>
+  <div id="gate" class="info">GATE</div>
+</div>
+
+<button class="reserve-btn" onclick="reserve()">Réserver</button>
+
+<div class="popup" id="popup">
+  <div class="popup-content">
+    <h3>Entrez votre nom :</h3>
+    <input type="text" id="nameInput" placeholder="Votre nom">
+    <br>
+    <button onclick="validateName()">Valider</button>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
+
+<script>
+  // Config Firebase
+  const firebaseConfig = {
+    apiKey: "VOTRE_API_KEY",
+    authDomain: "VOTRE_PROJET.firebaseapp.com",
+    databaseURL: "https://VOTRE_PROJET.firebaseio.com",
+    projectId: "VOTRE_PROJET",
+    storageBucket: "VOTRE_PROJET.appspot.com",
+    messagingSenderId: "VOTRE_ID",
+    appId: "VOTRE_APP_ID"
+  };
+
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // Variables
+  let passengerName = "";
+
+  // Au chargement, récupérer les infos du vol
+  window.onload = () => {
+    const flightRef = db.ref("vols/actuel");
+    flightRef.once("value").then(snapshot => {
+      const data = snapshot.val();
+      document.getElementById("flight").textContent = data.numero;
+      document.getElementById("destination").textContent = data.destination;
+      document.getElementById("departure").textContent = data.depart;
+      document.getElementById("time").textContent = data.heure;
+      document.getElementById("gate").textContent = data.gate;
+    });
+  };
+
+  // Valider le nom
+  function validateName() {
+    const input = document.getElementById("nameInput").value.trim();
+    if (input) {
+      passengerName = input;
+      document.getElementById("passengerName").textContent = passengerName.toUpperCase();
+      document.getElementById("popup").style.display = "none";
+    }
+  }
+
+  // Réserver
+  function reserve() {
+    if (!passengerName) {
+      alert("Veuillez entrer votre nom d'abord.");
+      return;
+    }
+
+    const reservation = {
+      nom: passengerName,
+      date: new Date().toISOString()
+    };
+
+    db.ref("reservations").push(reservation).then(() => {
+      window.location.href = "boarding.html";
+    });
+  }
+</script>
+
+</body>
+</html>
