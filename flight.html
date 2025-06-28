@@ -32,7 +32,9 @@
       transform: translate(-50%, -50%);
       width: 100px;
       display: none;
+      z-index: 2;
     }
+
     #nosmoking {
       position: absolute;
       right: 25%;
@@ -40,12 +42,13 @@
       transform: translate(50%, -50%);
       width: 100px;
       display: none;
+      z-index: 2;
     }
   </style>
 </head>
 <body>
 
-<div class="container">
+<div class="video-container">
 
   <audio id="chime" src="chime.mp3" preload="auto"></audio>
   <!-- Remplace l'URL par celle de ton live YouTube -->
