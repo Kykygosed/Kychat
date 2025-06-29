@@ -139,50 +139,79 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const roomName = "room"; // Nom du noeud de la room dans Firebase
+const roomName = "room";
 const room = db.ref(roomName);
 
 let localStream = null;
 let myPseudo = null;
-const connections = {}; // { pseudo: { pc: RTCPeerConnection, audioElement: Audio } }
+const connections = {}; // { pseudo: { pc, audioElement } }
 
-const startBtn = document.getElementById("startBtn"); // Bouton "Commencer"
-const pttBtn = document.getElementById("pttBtn"); // Bouton PTT
-const outputSelect = document.getElementById("outputSelect"); // Select sortie audio
+const startBtn = document.getElementById("startBtn");
+const pttBtn = document.getElementById("pttBtn");
+const inputSelect = document.getElementById("inputSelect");   // Sélecteur micro
+const outputSelect = document.getElementById("outputSelect"); // Sélecteur sortie audio
 
-// -- Obtenir le micro --
-async function getLocalStream() {
+// Fonction pour obtenir le flux audio avec le deviceId choisi
+async function getLocalStream(deviceId) {
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const constraints = {
+      audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      video: false,
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStream = stream;
-    console.log("Micro activé");
+    console.log("Micro activé avec deviceId:", deviceId);
   } catch (e) {
     alert("Erreur accès micro : " + e.message);
   }
 }
 
-// -- Créer une connexion WebRTC --
-function createConnection(pseudo, offerData, offerKey) {
-  if (connections[pseudo]) return; // déjà connecté
+// Remplir les sélecteurs input/output
+async function updateDeviceLists() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+
+  // Input (micro)
+  inputSelect.innerHTML = "";
+  const audioInputs = devices.filter(d => d.kind === "audioinput");
+  audioInputs.forEach(device => {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+    option.text = device.label || `Microphone ${inputSelect.length + 1}`;
+    inputSelect.appendChild(option);
+  });
+
+  // Output (enceinte / casque)
+  outputSelect.innerHTML = "";
+  const audioOutputs = devices.filter(d => d.kind === "audiooutput");
+  audioOutputs.forEach(device => {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+    option.text = device.label || `Sortie audio ${outputSelect.length + 1}`;
+    outputSelect.appendChild(option);
+  });
+}
+
+// Créer une connexion WebRTC à partir d'une offre
+async function createConnection(pseudo, offerData, offerKey) {
+  if (connections[pseudo]) return;
 
   const pc = new RTCPeerConnection();
 
-  // stocker immédiatement dans connections pour éviter erreurs
   connections[pseudo] = { pc, audioElement: null };
 
-  // ajouter le stream local (ton micro) dans cette connexion
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
-  // Dès réception d'un stream (audio) de l'autre utilisateur
   pc.ontrack = e => {
     if (!connections[pseudo].audioElement) {
       const audioEl = new Audio();
       audioEl.autoplay = true;
-      const outputId = outputSelect.value;
-      if (outputId && audioEl.setSinkId) {
-        audioEl.setSinkId(outputId).catch(console.warn);
+      if (outputSelect.value && audioEl.setSinkId) {
+        audioEl.setSinkId(outputSelect.value).catch(console.warn);
       }
       connections[pseudo].audioElement = audioEl;
     }
@@ -193,7 +222,6 @@ function createConnection(pseudo, offerData, offerKey) {
     detectIncomingVoice(audioEl);
   };
 
-  // Envoi des ICE candidates à Firebase
   pc.onicecandidate = event => {
     if (event.candidate) {
       room.child(offerKey).child("candidates").push({
@@ -203,27 +231,25 @@ function createConnection(pseudo, offerData, offerKey) {
     }
   };
 
-  pc.setRemoteDescription(new RTCSessionDescription(offerData.offer))
-    .then(() => pc.createAnswer())
-    .then(answer => pc.setLocalDescription(answer))
-    .then(() => {
-      room.child(offerKey).update({ answer: pc.localDescription.toJSON() });
-    })
-    .catch(console.error);
+  await pc.setRemoteDescription(new RTCSessionDescription(offerData.offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  await room.child(offerKey).update({ answer: pc.localDescription.toJSON() });
 }
 
-// -- Envoyer une offre (offer) à Firebase --
+// Envoyer une offre
 async function sendOffer() {
   if (!localStream) {
     alert("Micro non activé");
     return;
   }
+
   const offerKey = room.push().key;
   const pc = new RTCPeerConnection();
 
-  connections["self"] = { pc, audioElement: null }; // Pour cohérence, même si on n'écoute pas self
+  connections["self"] = { pc, audioElement: null };
 
-  // Ajouter local stream (micro)
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
   pc.onicecandidate = event => {
@@ -235,16 +261,19 @@ async function sendOffer() {
     }
   };
 
+  pc.ontrack = e => {
+    // (Optionnel) Tu n'écoutes pas ton propre audio, donc rien ici
+  };
+
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Publier l'offre dans Firebase
   await room.child(offerKey).set({
     offer: pc.localDescription.toJSON(),
     from: myPseudo,
   });
 
-  // Ecouter la réponse (answer) et candidates sur cette offre
+  // Écoute réponse answer
   room.child(offerKey).on("value", snapshot => {
     const data = snapshot.val();
     if (!data) return;
@@ -253,19 +282,16 @@ async function sendOffer() {
     }
   });
 
+  // Écoute candidates ICE
   room.child(offerKey).child("candidates").on("child_added", snap => {
     const cand = snap.val();
     if (cand.from !== myPseudo) {
       pc.addIceCandidate(new RTCIceCandidate(cand.candidate)).catch(console.warn);
     }
   });
-
-  // Garde la connexion sous le pseudo de l'autre utilisateur
-  // Ici on stocke sous "self" mais la connexion n'est pas pour self
-  // On va recevoir une offre d'autres utilisateurs pour créer leurs connexions.
 }
 
-// -- Ecoute des offres d'autres utilisateurs --
+// Écouter les offres entrantes
 room.on("child_added", snap => {
   const offerData = snap.val();
   const offerKey = snap.key;
@@ -275,7 +301,7 @@ room.on("child_added", snap => {
   }
 });
 
-// -- Détection du son entrant pour illuminer PTT --
+// Détection du son entrant sur un Audio element
 function detectIncomingVoice(audioEl) {
   if (!audioEl) return;
 
@@ -297,18 +323,12 @@ function detectIncomingVoice(audioEl) {
     }
     const average = sum / dataArray.length;
 
-    if (average > 20) { // seuil arbitraire de détection son
-      // Illuminer le bouton PTT en vert
+    if (average > 20) {
       pttBtn.style.backgroundColor = "limegreen";
-
-      // Remettre le timeout à zéro
       if (speakingTimeout) clearTimeout(speakingTimeout);
-
       speakingTimeout = setTimeout(() => {
-        pttBtn.style.backgroundColor = ""; // revenir à la couleur d'origine
-      }, 1500); // 1.5 secondes après la dernière détection
-    } else {
-      // Si pas de son détecté, le timeout s'occupera d'éteindre le vert
+        pttBtn.style.backgroundColor = "";
+      }, 1500);
     }
 
     requestAnimationFrame(checkVolume);
@@ -317,33 +337,45 @@ function detectIncomingVoice(audioEl) {
   checkVolume();
 }
 
-// -- Initialisation --
+// Quand l'utilisateur change de micro, on relance le flux
+inputSelect.addEventListener("change", async () => {
+  await getLocalStream(inputSelect.value);
+
+  // On met à jour les pistes sur chaque connexion ouverte
+  Object.values(connections).forEach(({ pc }) => {
+    // Enlever les anciennes pistes audio
+    pc.getSenders().forEach(sender => {
+      if (sender.track && sender.track.kind === "audio") {
+        pc.removeTrack(sender);
+      }
+    });
+    // Ajouter les nouvelles pistes
+    localStream.getTracks().forEach(track => {
+      if (track.kind === "audio") {
+        pc.addTrack(track, localStream);
+      }
+    });
+  });
+});
+
+// Quand l'utilisateur change de sortie audio, on met à jour les éléments Audio
+outputSelect.addEventListener("change", () => {
+  Object.values(connections).forEach(({ audioElement }) => {
+    if (audioElement && audioElement.setSinkId) {
+      audioElement.setSinkId(outputSelect.value).catch(console.warn);
+    }
+  });
+});
+
 async function init() {
   myPseudo = prompt("Entrez votre pseudo :");
   if (!myPseudo) {
     alert("Pseudo obligatoire");
     return;
   }
-  await getLocalStream();
 
-  // Récupérer et remplir les sorties audio (device)
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const outputs = devices.filter(d => d.kind === "audiooutput");
-  outputs.forEach(dev => {
-    const option = document.createElement("option");
-    option.value = dev.deviceId;
-    option.text = dev.label || "Sortie audio";
-    outputSelect.appendChild(option);
-  });
-
-  // Gérer changement sortie audio (changer le setSinkId des Audio elements)
-  outputSelect.addEventListener("change", () => {
-    Object.values(connections).forEach(({ audioElement }) => {
-      if (audioElement && audioElement.setSinkId) {
-        audioElement.setSinkId(outputSelect.value).catch(console.warn);
-      }
-    });
-  });
+  await updateDeviceLists();
+  await getLocalStream(inputSelect.value);
 
   startBtn.disabled = false;
   startBtn.addEventListener("click", () => {
