@@ -74,6 +74,21 @@
         .ptt-btn.active {
             background: blue;
         }
+        #pttBtn.active {
+  background-color: #ff0000; /* rouge micro actif */
+  box-shadow: 0 0 10px red;
+}
+
+#pttBtn.receiving {
+  background-color: #00cc00; /* vert réception */
+  box-shadow: 0 0 10px limegreen;
+}
+
+/* Si tu veux que rouge ET vert soient exclusifs */
+#pttBtn.active.receiving {
+  background-color: #ff0000; /* priorité rouge quand on parle */
+}
+
     </style>
 </head>
 <body>
