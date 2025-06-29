@@ -2,132 +2,281 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Radio WebRTC</title>
+    <title>Radio ATC Web</title>
     <style>
-        body { background: #111; color: white; text-align: center; font-family: Arial, sans-serif; }
-        #pttBtn { padding: 15px 30px; background: #2b2; border: none; border-radius: 10px; font-size: 18px; cursor: pointer; margin-top: 20px; }
-        #pttBtn:active { background: #e33; }
+        body {
+            background: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .radio-container {
+            display: inline-block;
+            border: 2px solid #555;
+            padding: 20px;
+            margin-top: 50px;
+        }
+        .display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .freq-box {
+            background: black;
+            color: red;
+            font-size: 30px;
+            border: 2px solid white;
+            width: 120px;
+            margin: 0 10px;
+        }
+        .labels {
+            display: flex;
+            justify-content: center;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .knob {
+            width: 30px;
+            height: 30px;
+            background: #777;
+            border-radius: 50%;
+            margin: 0 5px;
+            cursor: pointer;
+        }
+        .swap-btn {
+            background: #333;
+            color: white;
+            border: 1px solid white;
+            padding: 5px 10px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        .device-select {
+            margin: 20px 0;
+        }
+        .ptt-btn {
+            background: red;
+            color: white;
+            font-size: 20px;
+            padding: 15px 30px;
+            margin-top: 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+        }
+        .ptt-btn.active {
+            background: blue;
+        }
     </style>
 </head>
 <body>
-    <h1>Radio WebRTC</h1>
-    <audio id="remoteAudio" autoplay></audio>
-    <button id="pttBtn">Push-to-Talk</button>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, set, push, onChildAdded, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+<h1>Radio ATC WebRTC</h1>
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDDH3yMEr78C_h0yAMiEXYVtENmiwMbxas",
-            authDomain: "kykychat-24c7f.firebaseapp.com",
-            databaseURL: "https://kykychat-24c7f-default-rtdb.europe-west1.firebasedatabase.app/",
-            projectId: "kykychat-24c7f",
-            storageBucket: "kykychat-24c7f.appspot.com",
-            messagingSenderId: "248801360563",
-            appId: "1:248801360563:web:bdd019dd49805236c84310"
-        };
+<div class="radio-container">
+    <div class="labels">
+        <div style="width: 120px;">ACTIVE</div>
+        <div style="width: 120px;">STANDBY</div>
+    </div>
+    <div class="display">
+        <div id="activeFreq" class="freq-box">118.00</div>
+        <div id="standbyFreq" class="freq-box">121.50</div>
+    </div>
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+    <div class="controls">
+        <div class="knob" id="entierKnob"></div>
+        <div class="knob" id="decimalKnob"></div>
+        <button class="swap-btn" id="swapBtn">⇄</button>
+    </div>
+</div>
 
-        const userId = prompt("Votre indicatif ?");
-        const pttBtn = document.getElementById("pttBtn");
-        const remoteAudio = document.getElementById("remoteAudio");
+<div class="device-select">
+    <label>Micro:</label>
+    <select id="inputSelect"></select>
+    <label>Haut-parleurs:</label>
+    <select id="outputSelect"></select>
+</div>
 
-        let localStream;
-        let peerConnection;
+<button class="ptt-btn" id="pttBtn">PTT</button>
 
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                localStream = stream;
-                localStream.getAudioTracks()[0].enabled = false; // Micro coupé par défaut
-                announcePresence();
-            })
-            .catch(err => console.error("Erreur accès micro:", err));
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 
-        function announcePresence() {
-            set(ref(db, `radio/users/${userId}`), true);
-            listenForOffers();
-        }
+<script>
+    // Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.firebasestorage.app",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-        function listenForOffers() {
-            onChildAdded(ref(db, "radio/offers"), async snapshot => {
-                const data = snapshot.val();
-                if (data.to === userId) {
-                    peerConnection = new RTCPeerConnection();
+    let pseudo = prompt("Entrez votre pseudo :");
 
-                    peerConnection.onicecandidate = e => {
-                        if (e.candidate) push(ref(db, `radio/candidates/${data.from}/${userId}`), JSON.stringify(e.candidate));
-                    };
+    let activeFreq = 118.00;
+    let entier = 121;
+    let decimal = 50;
 
-                    peerConnection.ontrack = e => {
-                        remoteAudio.srcObject = e.streams[0];
-                    };
+    const activeFreqDisplay = document.getElementById("activeFreq");
+    const standbyFreqDisplay = document.getElementById("standbyFreq");
 
-                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    function updateDisplays() {
+        activeFreqDisplay.textContent = activeFreq.toFixed(2);
+        standbyFreqDisplay.textContent = `${entier}.${decimal.toString().padStart(2, '0')}`;
+    }
 
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    set(ref(db, `radio/answers/${data.from}`), { from: userId, answer });
+    updateDisplays();
 
-                    listenForCandidates(data.from);
-                }
-            });
-        }
+    document.getElementById("entierKnob").addEventListener("wheel", e => {
+        e.preventDefault();
+        entier += (e.deltaY < 0) ? 1 : -1;
+        if (entier < 108) entier = 136;
+        if (entier > 136) entier = 108;
+        updateDisplays();
+    });
 
-        function call(target) {
-            peerConnection = new RTCPeerConnection();
+    document.getElementById("decimalKnob").addEventListener("wheel", e => {
+        e.preventDefault();
+        decimal += (e.deltaY < 0) ? 5 : -5;
+        if (decimal < 0) decimal = 95;
+        if (decimal > 95) decimal = 0;
+        updateDisplays();
+    });
 
-            peerConnection.onicecandidate = e => {
-                if (e.candidate) push(ref(db, `radio/candidates/${userId}/${target}`), JSON.stringify(e.candidate));
-            };
+    document.getElementById("entierKnob").addEventListener("click", () => {
+        entier = (entier < 136) ? entier + 1 : 108;
+        updateDisplays();
+    });
 
-            peerConnection.ontrack = e => {
-                remoteAudio.srcObject = e.streams[0];
-            };
+    document.getElementById("decimalKnob").addEventListener("click", () => {
+        decimal = (decimal < 95) ? decimal + 5 : 0;
+        updateDisplays();
+    });
 
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    document.getElementById("swapBtn").addEventListener("click", () => {
+        const temp = activeFreq;
+        activeFreq = parseFloat(`${entier}.${decimal.toString().padStart(2, '0')}`);
+        entier = Math.floor(temp);
+        decimal = Math.round((temp - entier) * 100);
+        updateDisplays();
+    });
 
-            peerConnection.createOffer()
-                .then(offer => {
-                    peerConnection.setLocalDescription(offer);
-                    set(ref(db, `radio/offers/${userId}`), { from: userId, to: target, offer });
-                    listenForCandidates(target);
-                });
+    const inputSelect = document.getElementById("inputSelect");
+    const outputSelect = document.getElementById("outputSelect");
 
-            onValue(ref(db, `radio/answers/${userId}`), snapshot => {
-                const data = snapshot.val();
-                if (data && data.from === target) {
-                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                }
-            });
-        }
-
-        function listenForCandidates(otherId) {
-            onChildAdded(ref(db, `radio/candidates/${otherId}/${userId}`), snap => {
-                const candidate = JSON.parse(snap.val());
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            });
-        }
-
-        // Push-to-Talk
-        pttBtn.onpointerdown = () => {
-            if (localStream) localStream.getAudioTracks()[0].enabled = true;
-            pttBtn.style.background = "#e33";
-        };
-
-        pttBtn.onpointerup = () => {
-            if (localStream) localStream.getAudioTracks()[0].enabled = false;
-            pttBtn.style.background = "#2b2";
-        };
-
-        // Appel automatique sur clic utilisateur distant (simulé)
-        onChildAdded(ref(db, "radio/users"), snap => {
-            const targetId = snap.key;
-            if (targetId !== userId) call(targetId);
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+        devices.forEach(device => {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.textContent = device.label || device.kind;
+            if (device.kind === "audioinput") inputSelect.appendChild(option);
+            if (device.kind === "audiooutput") outputSelect.appendChild(option);
         });
-    </script>
+    });
+
+    let localStream;
+    let connections = {};
+    const room = db.ref("frequencies");
+
+    const pttBtn = document.getElementById("pttBtn");
+    pttBtn.addEventListener("mousedown", startTransmit);
+    pttBtn.addEventListener("mouseup", stopTransmit);
+    pttBtn.addEventListener("touchstart", startTransmit);
+    pttBtn.addEventListener("touchend", stopTransmit);
+
+    async function startTransmit() {
+        if (localStream) return;
+        const inputId = inputSelect.value;
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: inputId ? { exact: inputId } : undefined }
+        });
+        broadcastStream();
+        detectVoice(localStream);
+    }
+
+    function stopTransmit() {
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+            localStream = null;
+        }
+        pttBtn.classList.remove("active");
+    }
+
+    function detectVoice(stream) {
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        const source = ctx.createMediaStreamSource(stream);
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        function analyze() {
+            analyser.getByteFrequencyData(data);
+            const volume = data.reduce((a, b) => a + b) / data.length;
+            if (volume > 10) {
+                pttBtn.classList.add("active");
+            } else {
+                pttBtn.classList.remove("active");
+            }
+            if (localStream) requestAnimationFrame(analyze);
+        }
+        analyze();
+    }
+
+    function setupListeners() {
+        room.on("child_added", snapshot => {
+            const data = snapshot.val();
+            if (data.pseudo !== pseudo && data.freq === activeFreq.toFixed(2)) {
+                const pc = new RTCPeerConnection();
+                connections[data.pseudo] = pc;
+
+                pc.ontrack = e => {
+                    const audio = new Audio();
+                    const outputId = outputSelect.value;
+                    if (outputId && audio.setSinkId) audio.setSinkId(outputId);
+                    audio.srcObject = e.streams[0];
+                    audio.play();
+                };
+
+                pc.setRemoteDescription(new RTCSessionDescription(data.offer))
+                    .then(() => pc.createAnswer())
+                    .then(answer => pc.setLocalDescription(answer))
+                    .then(() => {
+                        snapshot.ref.update({ answer: pc.localDescription });
+                    });
+            }
+        });
+    }
+
+    function broadcastStream() {
+        const pc = new RTCPeerConnection();
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        pc.createOffer()
+            .then(offer => pc.setLocalDescription(offer))
+            .then(() => {
+                room.push({
+                    pseudo,
+                    freq: activeFreq.toFixed(2),
+                    offer: pc.localDescription
+                });
+            });
+    }
+
+    setupListeners();
+</script>
+
 </body>
 </html>
