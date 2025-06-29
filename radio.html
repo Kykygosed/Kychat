@@ -139,265 +139,219 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let pseudo = prompt("Entrez votre pseudo :");
+const roomName = "room"; // Nom du noeud de la room dans Firebase
+const room = db.ref(roomName);
 
-let activeFreq = 118.00;
-let entier = 121;
-let decimal = 50;
-
-const activeFreqDisplay = document.getElementById("activeFreq");
-const standbyFreqDisplay = document.getElementById("standbyFreq");
-const pttBtn = document.getElementById("pttBtn");
-
-function updateDisplays() {
-    activeFreqDisplay.textContent = activeFreq.toFixed(2);
-    standbyFreqDisplay.textContent = `${entier}.${decimal.toString().padStart(2, '0')}`;
-}
-
-updateDisplays();
-
-document.getElementById("entierKnob").addEventListener("wheel", e => {
-    e.preventDefault();
-    entier += (e.deltaY < 0) ? 1 : -1;
-    if (entier < 108) entier = 136;
-    if (entier > 136) entier = 108;
-    updateDisplays();
-});
-
-document.getElementById("decimalKnob").addEventListener("wheel", e => {
-    e.preventDefault();
-    decimal += (e.deltaY < 0) ? 5 : -5;
-    if (decimal < 0) decimal = 95;
-    if (decimal > 95) decimal = 0;
-    updateDisplays();
-});
-
-document.getElementById("entierKnob").addEventListener("click", () => {
-    entier = (entier < 136) ? entier + 1 : 108;
-    updateDisplays();
-});
-
-document.getElementById("decimalKnob").addEventListener("click", () => {
-    decimal = (decimal < 95) ? decimal + 5 : 0;
-    updateDisplays();
-});
-
-document.getElementById("swapBtn").addEventListener("click", () => {
-    const temp = activeFreq;
-    activeFreq = parseFloat(`${entier}.${decimal.toString().padStart(2, '0')}`);
-    entier = Math.floor(temp);
-    decimal = Math.round((temp - entier) * 100);
-    updateDisplays();
-});
-
-// --- Gestion des périphériques audio ---
-const inputSelect = document.getElementById("inputSelect");
-const outputSelect = document.getElementById("outputSelect");
-
-navigator.mediaDevices.enumerateDevices().then(devices => {
-    devices.forEach(device => {
-        const option = document.createElement("option");
-        option.value = device.deviceId;
-        option.textContent = device.label || device.kind;
-        if (device.kind === "audioinput") inputSelect.appendChild(option);
-        if (device.kind === "audiooutput") outputSelect.appendChild(option);
-    });
-});
-
-// Variables globales
 let localStream = null;
-let connections = {};  // { pseudo: { pc, audioElement } }
-const room = db.ref("frequencies");
+let myPseudo = null;
+const connections = {}; // { pseudo: { pc: RTCPeerConnection, audioElement: Audio } }
 
-// Fonction pour démarrer la transmission PTT
-async function startTransmit() {
-    if (localStream) return;
-    const inputId = inputSelect.value;
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: inputId ? { exact: inputId } : undefined }
-        });
-    } catch(err) {
-        alert("Erreur accès micro : " + err.message);
-        return;
-    }
-    pttBtn.classList.add("active"); // rouge quand on parle
+const startBtn = document.getElementById("startBtn"); // Bouton "Commencer"
+const pttBtn = document.getElementById("pttBtn"); // Bouton PTT
+const outputSelect = document.getElementById("outputSelect"); // Select sortie audio
 
-    broadcastStream();
-    detectVoice(localStream);
+// -- Obtenir le micro --
+async function getLocalStream() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localStream = stream;
+    console.log("Micro activé");
+  } catch (e) {
+    alert("Erreur accès micro : " + e.message);
+  }
 }
 
-// Fonction pour arrêter la transmission
-function stopTransmit() {
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-    }
-    pttBtn.classList.remove("active", "receiving");
-}
-
-// Analyse volume micro local (PTT rouge)
-function detectVoice(stream) {
-    const ctx = new AudioContext();
-    const analyser = ctx.createAnalyser();
-    const source = ctx.createMediaStreamSource(stream);
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
-
-    function analyze() {
-        analyser.getByteFrequencyData(data);
-        const volume = data.reduce((a,b) => a+b) / data.length;
-        if (volume > 10) {
-            pttBtn.classList.add("active");
-        } else {
-            pttBtn.classList.remove("active");
-        }
-        if (localStream) requestAnimationFrame(analyze);
-    }
-    analyze();
-}
-
-// Gestion PTT bouton
-pttBtn.addEventListener("mousedown", startTransmit);
-pttBtn.addEventListener("mouseup", stopTransmit);
-pttBtn.addEventListener("touchstart", startTransmit);
-pttBtn.addEventListener("touchend", stopTransmit);
-
-// --- WebRTC avec gestion ICE candidates + réception audio + signalisation via Firebase ---
-
-// Ajoute un candidat ICE à un PC donné
-function addIceCandidate(pseudo, candidate) {
-    if (connections[pseudo] && connections[pseudo].pc) {
-        connections[pseudo].pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
-    }
-}
-
-// Crée une connexion WebRTC entrante
+// -- Créer une connexion WebRTC --
 function createConnection(pseudo, offerData, offerKey) {
-    if (connections[pseudo]) return; // déjà connecté
+  if (connections[pseudo]) return; // déjà connecté
 
-    const pc = new RTCPeerConnection();
+  const pc = new RTCPeerConnection();
 
-    // Recevoir le flux audio
-    pc.ontrack = e => {
-        let audioEl;
-        if (connections[pseudo]) {
-            audioEl = connections[pseudo].audioElement;
-        } else {
-            audioEl = new Audio();
-            audioEl.autoplay = true;
-            // Assignation device sortie audio
-            const outputId = outputSelect.value;
-            if (outputId && audioEl.setSinkId) audioEl.setSinkId(outputId).catch(console.warn);
-            connections[pseudo].audioElement = audioEl;
-        }
-        audioEl.srcObject = e.streams[0];
-        audioEl.play();
+  // stocker immédiatement dans connections pour éviter erreurs
+  connections[pseudo] = { pc, audioElement: null };
 
-        // Détecter le volume reçu (PTT vert)
-        detectIncomingVoice(audioEl);
-    };
-
-    pc.onicecandidate = event => {
-        if (event.candidate) {
-            room.child(offerKey).child("candidates").push({
-                from: pseudo,
-                candidate: event.candidate.toJSON()
-            });
-        }
-    };
-
-    pc.setRemoteDescription(new RTCSessionDescription(offerData.offer))
-        .then(() => pc.createAnswer())
-        .then(answer => pc.setLocalDescription(answer))
-        .then(() => {
-            // Met à jour la réponse dans Firebase
-            room.child(offerKey).update({ answer: pc.localDescription.toJSON() });
-        })
-        .catch(console.error);
-
-    connections[pseudo] = { pc, audioElement: null };
-}
-
-// Fonction pour émettre son flux local
-function broadcastStream() {
-    const pc = new RTCPeerConnection();
-
+  // ajouter le stream local (ton micro) dans cette connexion
+  if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
 
-    pc.onicecandidate = event => {
-        if (event.candidate) {
-            // Pas besoin ici d'envoyer candidates car on pousse toute l'offre dans Firebase (mais on pourrait améliorer)
-            // Ici on fait simple pour début
-        }
-    };
-
-    pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
-            // Push l'offre dans Firebase avec pseudo et fréquence
-            room.push({
-                pseudo,
-                freq: activeFreq.toFixed(2),
-                offer: pc.localDescription.toJSON()
-            });
-        })
-        .catch(console.error);
-}
-
-// Detecte le volume audio reçu d'un autre utilisateur et allume le PTT en vert si > seuil
-function detectIncomingVoice(audioElement) {
-    const ctx = new AudioContext();
-    const analyser = ctx.createAnalyser();
-    const source = ctx.createMediaElementSource(audioElement);
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    analyser.connect(ctx.destination);
-    const data = new Uint8Array(analyser.frequencyBinCount);
-
-    function analyze() {
-        analyser.getByteFrequencyData(data);
-        const volume = data.reduce((a,b) => a+b) / data.length;
-        if (volume > 10) {
-            pttBtn.classList.add("receiving"); // vert si on reçoit
-        } else {
-            pttBtn.classList.remove("receiving");
-        }
-        if (audioElement.srcObject) requestAnimationFrame(analyze);
+  // Dès réception d'un stream (audio) de l'autre utilisateur
+  pc.ontrack = e => {
+    if (!connections[pseudo].audioElement) {
+      const audioEl = new Audio();
+      audioEl.autoplay = true;
+      const outputId = outputSelect.value;
+      if (outputId && audioEl.setSinkId) {
+        audioEl.setSinkId(outputId).catch(console.warn);
+      }
+      connections[pseudo].audioElement = audioEl;
     }
-    analyze();
+    const audioEl = connections[pseudo].audioElement;
+    audioEl.srcObject = e.streams[0];
+    audioEl.play();
+
+    detectIncomingVoice(audioEl);
+  };
+
+  // Envoi des ICE candidates à Firebase
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      room.child(offerKey).child("candidates").push({
+        from: myPseudo,
+        candidate: event.candidate.toJSON(),
+      });
+    }
+  };
+
+  pc.setRemoteDescription(new RTCSessionDescription(offerData.offer))
+    .then(() => pc.createAnswer())
+    .then(answer => pc.setLocalDescription(answer))
+    .then(() => {
+      room.child(offerKey).update({ answer: pc.localDescription.toJSON() });
+    })
+    .catch(console.error);
 }
 
-// Surveillance des offres dans Firebase
-room.on("child_added", snapshot => {
+// -- Envoyer une offre (offer) à Firebase --
+async function sendOffer() {
+  if (!localStream) {
+    alert("Micro non activé");
+    return;
+  }
+  const offerKey = room.push().key;
+  const pc = new RTCPeerConnection();
+
+  connections["self"] = { pc, audioElement: null }; // Pour cohérence, même si on n'écoute pas self
+
+  // Ajouter local stream (micro)
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      room.child(offerKey).child("candidates").push({
+        from: myPseudo,
+        candidate: event.candidate.toJSON(),
+      });
+    }
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  // Publier l'offre dans Firebase
+  await room.child(offerKey).set({
+    offer: pc.localDescription.toJSON(),
+    from: myPseudo,
+  });
+
+  // Ecouter la réponse (answer) et candidates sur cette offre
+  room.child(offerKey).on("value", snapshot => {
     const data = snapshot.val();
-    const key = snapshot.key;
-
-    // Ignorer ses propres offres
-    if (data.pseudo === pseudo) return;
-
-    // Si fréquence correspond
-    if (parseFloat(data.freq) === activeFreq) {
-        // Crée la connexion et répond
-        createConnection(data.pseudo, data, key);
+    if (!data) return;
+    if (data.answer && pc.signalingState !== "closed") {
+      pc.setRemoteDescription(new RTCSessionDescription(data.answer));
     }
+  });
+
+  room.child(offerKey).child("candidates").on("child_added", snap => {
+    const cand = snap.val();
+    if (cand.from !== myPseudo) {
+      pc.addIceCandidate(new RTCIceCandidate(cand.candidate)).catch(console.warn);
+    }
+  });
+
+  // Garde la connexion sous le pseudo de l'autre utilisateur
+  // Ici on stocke sous "self" mais la connexion n'est pas pour self
+  // On va recevoir une offre d'autres utilisateurs pour créer leurs connexions.
+}
+
+// -- Ecoute des offres d'autres utilisateurs --
+room.on("child_added", snap => {
+  const offerData = snap.val();
+  const offerKey = snap.key;
+
+  if (offerData.from !== myPseudo && !connections[offerData.from]) {
+    createConnection(offerData.from, offerData, offerKey);
+  }
 });
 
-// Surveillance des candidats ICE
-room.on("child_changed", snapshot => {
-    const data = snapshot.val();
-    const key = snapshot.key;
+// -- Détection du son entrant pour illuminer PTT --
+function detectIncomingVoice(audioEl) {
+  if (!audioEl) return;
 
-    if (!data.candidates) return;
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(audioEl.srcObject);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
 
-    Object.values(data.candidates).forEach(candObj => {
-        if (candObj.from !== pseudo) {
-            addIceCandidate(candObj.from, candObj.candidate);
-        }
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  let speakingTimeout = null;
+
+  function checkVolume() {
+    analyser.getByteFrequencyData(dataArray);
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i];
+    }
+    const average = sum / dataArray.length;
+
+    if (average > 20) { // seuil arbitraire de détection son
+      // Illuminer le bouton PTT en vert
+      pttBtn.style.backgroundColor = "limegreen";
+
+      // Remettre le timeout à zéro
+      if (speakingTimeout) clearTimeout(speakingTimeout);
+
+      speakingTimeout = setTimeout(() => {
+        pttBtn.style.backgroundColor = ""; // revenir à la couleur d'origine
+      }, 1500); // 1.5 secondes après la dernière détection
+    } else {
+      // Si pas de son détecté, le timeout s'occupera d'éteindre le vert
+    }
+
+    requestAnimationFrame(checkVolume);
+  }
+
+  checkVolume();
+}
+
+// -- Initialisation --
+async function init() {
+  myPseudo = prompt("Entrez votre pseudo :");
+  if (!myPseudo) {
+    alert("Pseudo obligatoire");
+    return;
+  }
+  await getLocalStream();
+
+  // Récupérer et remplir les sorties audio (device)
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const outputs = devices.filter(d => d.kind === "audiooutput");
+  outputs.forEach(dev => {
+    const option = document.createElement("option");
+    option.value = dev.deviceId;
+    option.text = dev.label || "Sortie audio";
+    outputSelect.appendChild(option);
+  });
+
+  // Gérer changement sortie audio (changer le setSinkId des Audio elements)
+  outputSelect.addEventListener("change", () => {
+    Object.values(connections).forEach(({ audioElement }) => {
+      if (audioElement && audioElement.setSinkId) {
+        audioElement.setSinkId(outputSelect.value).catch(console.warn);
+      }
     });
-});
+  });
 
+  startBtn.disabled = false;
+  startBtn.addEventListener("click", () => {
+    sendOffer();
+  });
+}
+
+init();
 </script>
 
 </body>
