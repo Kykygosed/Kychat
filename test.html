@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WebRTC Audio Group + Firebase Signal</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #222; color: #eee; }
+  select, button { font-size: 1em; margin: 10px 0; }
+  label { display: block; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1>Chat Audio WebRTC + Firebase</h1>
+
+  <label for="audioInput">Microphone (entrée audio) :</label>
+  <select id="audioInput"></select>
+
+  <label for="audioOutput">Sortie audio (haut-parleur) :</label>
+  <select id="audioOutput"></select>
+
+  <button id="toggleMic">Activer Micro</button>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    // --- CONFIGURE ICI TON PROJET FIREBASE ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.firebasestorage.app",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // --- VARIABLES GLOBALES ---
+    let localStream = null;
+    let isMicOn = false;
+    let peers = {}; // stocke RTCPeerConnections { peerId: RTCPeerConnection }
+    let localUserId = Math.floor(Math.random() * 1e9).toString(); // id temporaire utilisateur
+
+    const audioInputSelect = document.getElementById('audioInput');
+    const audioOutputSelect = document.getElementById('audioOutput');
+    const toggleMicBtn = document.getElementById('toggleMic');
+
+    // On liste les devices audio
+    async function updateDeviceLists() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+
+      // Microphones
+      audioInputSelect.innerHTML = '';
+      devices.filter(d => d.kind === 'audioinput').forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Microphone ${audioInputSelect.length + 1}`;
+        audioInputSelect.appendChild(option);
+      });
+
+      // Haut-parleurs
+      audioOutputSelect.innerHTML = '';
+      devices.filter(d => d.kind === 'audiooutput').forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Haut-parleur ${audioOutputSelect.length + 1}`;
+        audioOutputSelect.appendChild(option);
+      });
+    }
+
+    // Demander les permissions, puis liste les devices
+    async function initDevices() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        await updateDeviceLists();
+      } catch(e) {
+        alert("Tu dois autoriser l'accès au micro !");
+      }
+    }
+
+    // Crée un stream audio local selon le device sélectionné
+    async function getLocalStream() {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+      const audioSource = audioInputSelect.value;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioSource ? { exact: audioSource } : undefined } });
+        return stream;
+      } catch(e) {
+        alert("Erreur accès micro : " + e.message);
+        return null;
+      }
+    }
+
+    // Crée un peer connection avec un autre user
+    function createPeerConnection(peerId) {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+
+      // Ajouter tracks locaux (micro)
+      if(localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      // Quand on reçoit un stream distant
+      pc.ontrack = event => {
+        let audio = document.getElementById('audio_' + peerId);
+        if(!audio) {
+          audio = document.createElement('audio');
+          audio.id = 'audio_' + peerId;
+          audio.autoplay = true;
+          audio.controls = false;
+          document.body.appendChild(audio);
+        }
+        audio.srcObject = event.streams[0];
+        // Appliquer la sortie audio sélectionnée si supportée
+        setAudioOutputDevice(audio, audioOutputSelect.value);
+      };
+
+      // Gérer ICE candidates
+      pc.onicecandidate = event => {
+        if(event.candidate) {
+          db.ref('signals/' + peerId + '/' + localUserId + '/candidates').push(event.candidate.toJSON());
+        }
+      };
+
+      return pc;
+    }
+
+    // Appliquer la sortie audio (si supportée)
+    function setAudioOutputDevice(audioElement, deviceId) {
+      if (typeof audioElement.sinkId !== 'undefined') {
+        audioElement.setSinkId(deviceId).catch(e => {
+          console.warn('Erreur setSinkId :', e);
+        });
+      }
+    }
+
+    // Envoie un offer à un peer
+    async function createOffer(peerId, pc) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await db.ref('signals/' + localUserId + '/' + peerId).set({ type: 'offer', sdp: offer.sdp });
+    }
+
+    // Envoie un answer à un peer
+    async function createAnswer(peerId, pc, offer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await db.ref('signals/' + localUserId + '/' + peerId).set({ type: 'answer', sdp: answer.sdp });
+    }
+
+    // Traite un signal reçu depuis Firebase
+    async function handleSignal(fromId, data) {
+      if(fromId === localUserId) return; // ignorer self
+
+      if(!peers[fromId]) {
+        peers[fromId] = createPeerConnection(fromId);
+      }
+      const pc = peers[fromId];
+
+      if(data.type === 'offer') {
+        await createAnswer(fromId, pc, data);
+      } else if(data.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+      }
+    }
+
+    // Traite ICE candidates reçus
+    async function handleCandidates(fromId, candidates) {
+      if(!peers[fromId]) return;
+      const pc = peers[fromId];
+      for(const c of candidates) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(c));
+        } catch(e) {
+          console.warn("Erreur ajout ICE candidate:", e);
+        }
+      }
+    }
+
+    // Init Firebase listeners
+    function listenFirebase() {
+      const signalsRef = db.ref('signals/' + localUserId);
+      signalsRef.on('child_added', async snapshot => {
+        const fromId = snapshot.key;
+        const data = snapshot.val();
+        if(!data) return;
+
+        if(data.candidates) {
+          // candidates arrivés
+          const candidatesRef = db.ref('signals/' + localUserId + '/' + fromId + '/candidates');
+          candidatesRef.on('child_added', cSnap => {
+            const candidate = cSnap.val();
+            if(candidate) handleCandidates(fromId, [candidate]);
+          });
+        } else {
+          await handleSignal(fromId, data);
+        }
+      });
+    }
+
+    // Diffuse à tous les autres utilisateurs (en base)
+    async function announcePresence() {
+      // Pour chaque utilisateur présent dans signals, on crée une connexion et envoie un offer
+      const signalsRef = db.ref('signals');
+      signalsRef.once('value').then(snapshot => {
+        const users = snapshot.val() || {};
+        Object.keys(users).forEach(peerId => {
+          if(peerId === localUserId) return;
+          if(!peers[peerId]) {
+            const pc = createPeerConnection(peerId);
+            peers[peerId] = pc;
+            createOffer(peerId, pc);
+          }
+        });
+      });
+    }
+
+    // Toggle micro
+    toggleMicBtn.onclick = async () => {
+      if(!isMicOn) {
+        localStream = await getLocalStream();
+        if(!localStream) return;
+        isMicOn = true;
+        toggleMicBtn.textContent = "Désactiver Micro";
+        // Ajouter pistes à tous les peers
+        Object.values(peers).forEach(pc => {
+          localStream.getTracks().forEach(track => {
+            // Si déjà dans pc, on skip (pour simplifier on ne gère pas ici la suppression)
+            if([...pc.getSenders()].find(s => s.track && s.track.kind === 'audio')) return;
+            pc.addTrack(track, localStream);
+          });
+        });
+      } else {
+        if(localStream) {
+          localStream.getTracks().forEach(t => t.stop());
+          localStream = null;
+        }
+        isMicOn = false;
+        toggleMicBtn.textContent = "Activer Micro";
+        // Supprimer pistes de tous les peers
+        Object.values(peers).forEach(pc => {
+          pc.getSenders().forEach(sender => {
+            if(sender.track && sender.track.kind === 'audio') {
+              pc.removeTrack(sender);
+            }
+          });
+        });
+      }
+    };
+
+    // Changement périphérique entrée
+    audioInputSelect.onchange = async () => {
+      if(isMicOn) {
+        localStream = await getLocalStream();
+        Object.values(peers).forEach(pc => {
+          const senders = pc.getSenders().filter(s => s.track && s.track.kind === 'audio');
+          senders.forEach(sender => sender.replaceTrack(localStream.getAudioTracks()[0]));
+        });
+      }
+    };
+
+    // Changement périphérique sortie
+    audioOutputSelect.onchange = () => {
+      // Changer la sortie audio des éléments <audio> distants
+      document.querySelectorAll('audio').forEach(audio => {
+        setAudioOutputDevice(audio, audioOutputSelect.value);
+      });
+    };
+
+    // Initialisation
+    (async () => {
+      await initDevices();
+      listenFirebase();
+      announcePresence();
+    })();
+
+  </script>
+</body>
+</html>
