@@ -2,131 +2,100 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Radio ATC Web</title>
+    <title>Simulateur Radio ATC WebRTC</title>
     <style>
         body {
-            background: black;
-            color: white;
+            background: #1e1e1e;
+            color: #fff;
             font-family: Arial, sans-serif;
-            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
         }
-        .radio-container {
-            display: inline-block;
-            border: 2px solid #555;
+        .radio {
+            background: #333;
             padding: 20px;
-            margin-top: 50px;
-        }
-        .display {
+            border-radius: 15px;
             display: flex;
-            justify-content: center;
             align-items: center;
-            margin: 10px 0;
+            gap: 20px;
         }
-        .freq-box {
-            background: black;
-            color: red;
-            font-size: 30px;
-            border: 2px solid white;
-            width: 120px;
-            margin: 0 10px;
-        }
-        .labels {
+        .freq-display {
             display: flex;
-            justify-content: center;
-            font-size: 12px;
-            margin-bottom: 5px;
-        }
-        .controls {
-            display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+        }
+        .freq-value {
+            font-size: 2em;
+            margin-bottom: 10px;
         }
         .knob {
-            width: 30px;
-            height: 30px;
-            background: #777;
+            width: 50px;
+            height: 50px;
+            background: gray;
             border-radius: 50%;
-            margin: 0 5px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
         }
         .swap-btn {
-            background: #333;
-            color: white;
-            border: 1px solid white;
-            padding: 5px 10px;
-            margin-left: 10px;
+            padding: 10px;
             cursor: pointer;
-        }
-        .device-select {
-            margin: 20px 0;
-        }
-        .ptt-btn {
-            background: red;
-            color: white;
-            font-size: 20px;
-            padding: 15px 30px;
-            margin-top: 20px;
-            cursor: pointer;
+            background: #555;
             border: none;
             border-radius: 5px;
-            transition: background 0.2s;
+            color: white;
+        }
+        .ptt-btn {
+            margin-top: 30px;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background: #444;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
         }
         .ptt-btn.active {
             background: blue;
         }
-        #pttBtn.active {
-  background-color: #ff0000; /* rouge micro actif */
-  box-shadow: 0 0 10px red;
-}
-
-#pttBtn.receiving {
-  background-color: #00cc00; /* vert réception */
-  box-shadow: 0 0 10px limegreen;
-}
-
-/* Si tu veux que rouge ET vert soient exclusifs */
-#pttBtn.active.receiving {
-  background-color: #ff0000; /* priorité rouge quand on parle */
-}
-
+        .device-select {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-
-<h1>Radio ATC WebRTC</h1>
-
-<div class="radio-container">
-    <div class="labels">
-        <div style="width: 120px;">ACTIVE</div>
-        <div style="width: 120px;">STANDBY</div>
+<h1>Radio VHF ATC - WebRTC</h1>
+<div class="radio">
+    <div class="freq-display">
+        <div>Active</div>
+        <div class="freq-value" id="activeFreq">118.00</div>
     </div>
-    <div class="display">
-        <div id="activeFreq" class="freq-box">118.00</div>
-        <div id="standbyFreq" class="freq-box">121.50</div>
-    </div>
-
-    <div class="controls">
-        <div class="knob" id="entierKnob"></div>
-        <div class="knob" id="decimalKnob"></div>
-        <button class="swap-btn" id="swapBtn">⇄</button>
+    <button class="swap-btn" id="swapBtn">⇄</button>
+    <div class="freq-display">
+        <div>Standby</div>
+        <div class="freq-value" id="standbyFreq">121.50</div>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <div class="knob" id="intKnob">MHz</div>
+            <div class="knob" id="decKnob">.kHz</div>
+        </div>
     </div>
 </div>
-
-<div class="device-select">
-    <label>Micro:</label>
-    <select id="inputSelect"></select>
-    <label>Haut-parleurs:</label>
-    <select id="outputSelect"></select>
-</div>
-
 <button class="ptt-btn" id="pttBtn">PTT</button>
-
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-<script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-
+<div class="device-select">
+    <label>Microphone : </label>
+    <select id="micSelect"></select>
+</div>
+<div class="device-select">
+    <label>Haut-parleur : </label>
+    <select id="speakerSelect"></select>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script>
-// --- Firebase Config + init (idem) ---
 const firebaseConfig = {
   apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
   authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -138,253 +107,104 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-
-const roomName = "room";
-const room = db.ref(roomName);
-
+let activeFreq = 118.00;
+let standbyFreq = 121.50;
+const activeFreqEl = document.getElementById('activeFreq');
+const standbyFreqEl = document.getElementById('standbyFreq');
+const intKnob = document.getElementById('intKnob');
+const decKnob = document.getElementById('decKnob');
+const swapBtn = document.getElementById('swapBtn');
+const micSelect = document.getElementById('micSelect');
+const speakerSelect = document.getElementById('speakerSelect');
+const pttBtn = document.getElementById('pttBtn');
 let localStream = null;
-let myPseudo = null;
-const connections = {}; // { pseudo: { pc, audioElement } }
-
-const startBtn = document.getElementById("startBtn");
-const pttBtn = document.getElementById("pttBtn");
-const inputSelect = document.getElementById("inputSelect");   // Sélecteur micro
-const outputSelect = document.getElementById("outputSelect"); // Sélecteur sortie audio
-
-// Fonction pour obtenir le flux audio avec le deviceId choisi
-async function getLocalStream(deviceId) {
-  if (localStream) {
-    localStream.getTracks().forEach(t => t.stop());
-  }
-  try {
-    const constraints = {
-      audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-      video: false,
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStream = stream;
-    console.log("Micro activé avec deviceId:", deviceId);
-  } catch (e) {
-    alert("Erreur accès micro : " + e.message);
-  }
+let isTransmitting = false;
+const peers = {};
+const username = prompt("Votre pseudo:");
+const freqPath = () => `radio/${activeFreq.toFixed(2).replace('.', '')}`;
+function updateDisplays() {
+    activeFreqEl.textContent = activeFreq.toFixed(2);
+    standbyFreqEl.textContent = standbyFreq.toFixed(2);
 }
-
-// Remplir les sélecteurs input/output
-async function updateDeviceLists() {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-
-  // Input (micro)
-  inputSelect.innerHTML = "";
-  const audioInputs = devices.filter(d => d.kind === "audioinput");
-  audioInputs.forEach(device => {
-    const option = document.createElement("option");
-    option.value = device.deviceId;
-    option.text = device.label || `Microphone ${inputSelect.length + 1}`;
-    inputSelect.appendChild(option);
-  });
-
-  // Output (enceinte / casque)
-  outputSelect.innerHTML = "";
-  const audioOutputs = devices.filter(d => d.kind === "audiooutput");
-  audioOutputs.forEach(device => {
-    const option = document.createElement("option");
-    option.value = device.deviceId;
-    option.text = device.label || `Sortie audio ${outputSelect.length + 1}`;
-    outputSelect.appendChild(option);
-  });
-}
-
-// Créer une connexion WebRTC à partir d'une offre
-async function createConnection(pseudo, offerData, offerKey) {
-  if (connections[pseudo]) return;
-
-  const pc = new RTCPeerConnection();
-
-  connections[pseudo] = { pc, audioElement: null };
-
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
-
-  pc.ontrack = e => {
-    if (!connections[pseudo].audioElement) {
-      const audioEl = new Audio();
-      audioEl.autoplay = true;
-      if (outputSelect.value && audioEl.setSinkId) {
-        audioEl.setSinkId(outputSelect.value).catch(console.warn);
-      }
-      connections[pseudo].audioElement = audioEl;
-    }
-    const audioEl = connections[pseudo].audioElement;
-    audioEl.srcObject = e.streams[0];
-    audioEl.play();
-
-    detectIncomingVoice(audioEl);
-  };
-
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      room.child(offerKey).child("candidates").push({
-        from: myPseudo,
-        candidate: event.candidate.toJSON(),
-      });
-    }
-  };
-
-  await pc.setRemoteDescription(new RTCSessionDescription(offerData.offer));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  await room.child(offerKey).update({ answer: pc.localDescription.toJSON() });
-}
-
-// Envoyer une offre
-async function sendOffer() {
-  if (!localStream) {
-    alert("Micro non activé");
-    return;
-  }
-
-  const offerKey = room.push().key;
-  const pc = new RTCPeerConnection();
-
-  connections["self"] = { pc, audioElement: null };
-
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      room.child(offerKey).child("candidates").push({
-        from: myPseudo,
-        candidate: event.candidate.toJSON(),
-      });
-    }
-  };
-
-  pc.ontrack = e => {
-    // (Optionnel) Tu n'écoutes pas ton propre audio, donc rien ici
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await room.child(offerKey).set({
-    offer: pc.localDescription.toJSON(),
-    from: myPseudo,
-  });
-
-  // Écoute réponse answer
-  room.child(offerKey).on("value", snapshot => {
-    const data = snapshot.val();
-    if (!data) return;
-    if (data.answer && pc.signalingState !== "closed") {
-      pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-    }
-  });
-
-  // Écoute candidates ICE
-  room.child(offerKey).child("candidates").on("child_added", snap => {
-    const cand = snap.val();
-    if (cand.from !== myPseudo) {
-      pc.addIceCandidate(new RTCIceCandidate(cand.candidate)).catch(console.warn);
-    }
-  });
-}
-
-// Écouter les offres entrantes
-room.on("child_added", snap => {
-  const offerData = snap.val();
-  const offerKey = snap.key;
-
-  if (offerData.from !== myPseudo && !connections[offerData.from]) {
-    createConnection(offerData.from, offerData, offerKey);
-  }
-});
-
-// Détection du son entrant sur un Audio element
-function detectIncomingVoice(audioEl) {
-  if (!audioEl) return;
-
-  const audioCtx = new AudioContext();
-  const source = audioCtx.createMediaStreamSource(audioEl.srcObject);
-  const analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 256;
-  source.connect(analyser);
-
-  const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-  let speakingTimeout = null;
-
-  function checkVolume() {
-    analyser.getByteFrequencyData(dataArray);
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      sum += dataArray[i];
-    }
-    const average = sum / dataArray.length;
-
-    if (average > 20) {
-      pttBtn.style.backgroundColor = "limegreen";
-      if (speakingTimeout) clearTimeout(speakingTimeout);
-      speakingTimeout = setTimeout(() => {
-        pttBtn.style.backgroundColor = "";
-      }, 1500);
-    }
-
-    requestAnimationFrame(checkVolume);
-  }
-
-  checkVolume();
-}
-
-// Quand l'utilisateur change de micro, on relance le flux
-inputSelect.addEventListener("change", async () => {
-  await getLocalStream(inputSelect.value);
-
-  // On met à jour les pistes sur chaque connexion ouverte
-  Object.values(connections).forEach(({ pc }) => {
-    // Enlever les anciennes pistes audio
-    pc.getSenders().forEach(sender => {
-      if (sender.track && sender.track.kind === "audio") {
-        pc.removeTrack(sender);
-      }
+function setupWebRTC() {
+    const ref = db.ref(freqPath());
+    ref.on('child_added', snap => {
+        const peerId = snap.key;
+        if (peerId === username) return;
+        const pc = new RTCPeerConnection();
+        pc.ontrack = e => {
+            const audio = new Audio();
+            audio.srcObject = e.streams[0];
+            audio.play();
+        };
+        if (localStream) {
+            localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+        }
+        pc.setRemoteDescription(new RTCSessionDescription(snap.val().offer)).then(() => {
+            return pc.createAnswer();
+        }).then(ans => {
+            return pc.setLocalDescription(ans);
+        }).then(() => {
+            db.ref(`${freqPath()}/${username}/answer`).set(pc.localDescription.toJSON());
+        });
+        peers[peerId] = pc;
     });
-    // Ajouter les nouvelles pistes
-    localStream.getTracks().forEach(track => {
-      if (track.kind === "audio") {
-        pc.addTrack(track, localStream);
-      }
-    });
-  });
-});
-
-// Quand l'utilisateur change de sortie audio, on met à jour les éléments Audio
-outputSelect.addEventListener("change", () => {
-  Object.values(connections).forEach(({ audioElement }) => {
-    if (audioElement && audioElement.setSinkId) {
-      audioElement.setSinkId(outputSelect.value).catch(console.warn);
-    }
-  });
-});
-
-async function init() {
-  myPseudo = prompt("Entrez votre pseudo :");
-  if (!myPseudo) {
-    alert("Pseudo obligatoire");
-    return;
-  }
-
-  await updateDeviceLists();
-  await getLocalStream(inputSelect.value);
-
-  startBtn.disabled = false;
-  startBtn.addEventListener("click", () => {
-    sendOffer();
-  });
 }
-
-init();
+function startMicro() {
+    const deviceId = micSelect.value;
+    navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: deviceId ? { exact: deviceId } : undefined }
+    }).then(stream => {
+        localStream = stream;
+        setupWebRTC();
+    });
+}
+navigator.mediaDevices.enumerateDevices().then(devices => {
+    devices.forEach(d => {
+        if (d.kind === 'audioinput') {
+            micSelect.innerHTML += `<option value="${d.deviceId}">${d.label || 'Microphone'}</option>`;
+        }
+        if (d.kind === 'audiooutput') {
+            speakerSelect.innerHTML += `<option value="${d.deviceId}">${d.label || 'Haut-parleur'}</option>`;
+        }
+    });
+});
+intKnob.addEventListener('wheel', e => {
+    e.preventDefault();
+    standbyFreq += e.deltaY < 0 ? 1 : -1;
+    standbyFreq = Math.min(Math.max(standbyFreq, 100), 136);
+    updateDisplays();
+});
+decKnob.addEventListener('wheel', e => {
+    e.preventDefault();
+    standbyFreq += e.deltaY < 0 ? 0.05 : -0.05;
+    standbyFreq = Math.min(Math.max(standbyFreq, 100), 136);
+    updateDisplays();
+});
+swapBtn.addEventListener('click', () => {
+    [activeFreq, standbyFreq] = [standbyFreq, activeFreq];
+    updateDisplays();
+    setupWebRTC();
+});
+micSelect.addEventListener('change', startMicro);
+pttBtn.addEventListener('mousedown', () => {
+    isTransmitting = true;
+});
+pttBtn.addEventListener('mouseup', () => {
+    isTransmitting = false;
+    pttBtn.classList.remove('active');
+});
+pttBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    isTransmitting = true;
+});
+pttBtn.addEventListener('touchend', e => {
+    e.preventDefault();
+    isTransmitting = false;
+    pttBtn.classList.remove('active');
+});
+updateDisplays();
+startMicro();
 </script>
-
 </body>
 </html>
