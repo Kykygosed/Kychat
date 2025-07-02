@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watchlist</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+    body {
+        background: linear-gradient(135deg, #1f1c2c, #928dab);
+        font-family: 'Segoe UI', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px;
+        min-height: 100vh;
+    }
+
+    h1 {
+        color: white;
+        margin-bottom: 20px;
+    }
+
+    #list {
+        width: 90%;
+        max-width: 500px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+
+    .item {
+        backdrop-filter: blur(15px);
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 15px;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+        transition: background 0.5s, box-shadow 0.5s;
+        position: relative;
+    }
+
+    .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: bold;
+    }
+
+    .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: limegreen;
+        transition: background 0.3s;
+    }
+
+    .status-text {
+        color: #00bfff;
+        transition: color 0.3s;
+    }
+
+    .item.done {
+        background: rgba(255, 0, 0, 0.2);
+        box-shadow: 0 0 20px red;
+        animation: blink 1s infinite;
+    }
+
+    .item.done .dot {
+        background: red;
+    }
+
+    .item.done .status-text {
+        color: red;
+    }
+
+    @keyframes blink {
+        0%, 100% { background: rgba(255, 0, 0, 0.2); }
+        50% { background: rgba(255, 0, 0, 0.4); }
+    }
+
+    #addBtn {
+        padding: 12px 25px;
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        color: white;
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    #addBtn:hover {
+        background: rgba(255, 255, 255, 0.35);
+    }
+
+    /* Popup styles */
+    #popup {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        display: none;
+    }
+
+    #popupContent {
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 20px;
+        border-radius: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        width: 300px;
+    }
+
+    #popupContent input {
+        padding: 10px;
+        border-radius: 8px;
+        border: none;
+        outline: none;
+    }
+
+    #popupContent button {
+        padding: 10px;
+        border-radius: 8px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        color: white;
+        cursor: pointer;
+    }
+
+</style>
+</head>
+<body>
+
+<h1>Watch list</h1>
+
+<div id="list"></div>
+<button id="addBtn">Add Item</button>
+
+<div id="popup">
+    <div id="popupContent">
+        <input type="text" id="newText" placeholder="Enter text">
+        <button id="confirmAdd">Add</button>
+    </div>
+</div>
+
+<script>
+const firebaseConfig = { 
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.appspot.com",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const listEl = document.getElementById("list");
+const addBtn = document.getElementById("addBtn");
+const popup = document.getElementById("popup");
+const newText = document.getElementById("newText");
+const confirmAdd = document.getElementById("confirmAdd");
+
+function renderItem(id, data) {
+    const div = document.createElement("div");
+    div.className = "item";
+    if (data.status === "done") div.classList.add("done");
+
+    const content = document.createElement("div");
+    content.textContent = data.text;
+
+    const status = document.createElement("div");
+    status.className = "status";
+
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    if (data.status === "done") dot.style.background = "red";
+
+    const statusText = document.createElement("span");
+    statusText.className = "status-text";
+    statusText.textContent = data.status === "done" ? "Shooted down" : "I'm still standing!";
+
+    status.appendChild(dot);
+    status.appendChild(statusText);
+
+    div.appendChild(content);
+    div.appendChild(status);
+
+    div.addEventListener("dblclick", () => {
+        // Toggle status
+        const newStatus = data.status === "done" ? "normal" : "done";
+        db.ref("items/" + id).update({ status: newStatus });
+    });
+
+    listEl.appendChild(div);
+}
+
+db.ref("items").on("value", snapshot => {
+    listEl.innerHTML = "";
+    snapshot.forEach(child => {
+        renderItem(child.key, child.val());
+    });
+});
+
+addBtn.onclick = () => {
+    const pin = prompt("Enter PIN:");
+    if (pin !== "5248") {
+        alert("Incorrect PIN!");
+        return;
+    }
+    popup.style.display = "flex";
+};
+
+confirmAdd.onclick = () => {
+    const text = newText.value.trim();
+    if (!text) return;
+    const newItem = { text, status: "normal" };
+    db.ref("items").push(newItem);
+    newText.value = "";
+    popup.style.display = "none";
+};
+</script>
+
+</body>
+</html>
