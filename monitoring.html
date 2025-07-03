@@ -1,56 +1,18 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Monitoring Caméras</title>
-<style>
-    body {
-        background: black;
-        margin: 0;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        grid-template-rows: repeat(4, 1fr);
-        height: 100vh;
-        width: 100vw;
-    }
-    .cam {
-        position: relative;
-        background: #111;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        cursor: pointer;
-    }
-    .cam video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        filter: grayscale(100%);
-    }
-    .cam .no-data {
-        color: white;
-        font-family: monospace;
-        font-size: 1.2rem;
-    }
-    .zoom {
-        position: fixed;
-        top: 0; left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: 10;
-        background: black;
-    }
-    .zoom video {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-    }
-</style>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <title>Monitoring</title>
+    <style>
+        body { margin: 0; background: black; display: flex; flex-wrap: wrap; width: 100vw; height: 100vh; }
+        .cell { flex: 1 0 25%; aspect-ratio: 16/9; border: 1px solid gray; position: relative; background: black; overflow: hidden; }
+        .cell video { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%); }
+        .nodata { color: white; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100%; }
+    </style>
 </head>
 <body>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -64,85 +26,58 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-
+const db = firebase.database();
 const viewerId = 'viewer-' + Math.random().toString(36).substr(2, 9);
 
-function monitorCameras() {
-    const grid = document.getElementById('grid');
-    
-    database.ref('signals').on('value', snapshot => {
-        grid.innerHTML = ''; // Clear grid
-
-        const cams = snapshot.val();
+function refreshGrid() {
+    document.body.innerHTML = '';
+    db.ref('signals').once('value', snap => {
+        const cams = snap.val();
         const camList = cams ? Object.keys(cams) : [];
-
+        
         for (let i = 0; i < 16; i++) {
             const cell = document.createElement('div');
-            cell.style.flex = '1 0 25%';
-            cell.style.aspectRatio = '16/9';
-            cell.style.border = '1px solid gray';
-            cell.style.position = 'relative';
-            cell.style.background = 'black';
-            cell.style.overflow = 'hidden';
+            cell.className = 'cell';
+            document.body.appendChild(cell);
 
             if (i < camList.length) {
                 const camId = camList[i];
                 const video = document.createElement('video');
                 video.autoplay = true;
                 video.muted = true;
-                video.style.filter = 'grayscale(100%)';
-                video.style.width = '100%';
-                video.style.height = '100%';
-                video.style.objectFit = 'cover';
-                
                 cell.appendChild(video);
-                setupConnection(camId, video);
+                connectToCam(camId, video);
 
-                // Agrandissement au clic
                 cell.onclick = () => {
-                    if (cell.style.position === 'fixed') {
-                        cell.style = '';
-                        monitorCameras();
-                    } else {
-                        Array.from(grid.children).forEach(c => c.style.display = 'none');
+                    if (cell.style.position === 'fixed') refreshGrid();
+                    else {
+                        document.body.innerHTML = '';
                         cell.style.position = 'fixed';
-                        cell.style.top = '0';
-                        cell.style.left = '0';
+                        cell.style.top = 0;
+                        cell.style.left = 0;
                         cell.style.width = '100%';
                         cell.style.height = '100%';
-                        cell.style.zIndex = '10';
-                        cell.style.background = 'black';
+                        cell.style.zIndex = 10;
+                        document.body.appendChild(cell);
                     }
                 };
-
             } else {
                 const txt = document.createElement('div');
+                txt.className = 'nodata';
                 txt.innerText = 'NO DATA';
-                txt.style.color = 'white';
-                txt.style.fontFamily = 'monospace';
-                txt.style.fontSize = '20px';
-                txt.style.display = 'flex';
-                txt.style.alignItems = 'center';
-                txt.style.justifyContent = 'center';
-                txt.style.height = '100%';
                 cell.appendChild(txt);
             }
-
-            grid.appendChild(cell);
         }
     });
 }
 
-function setupConnection(camId, videoElement) {
+function connectToCam(camId, video) {
     const pc = new RTCPeerConnection();
-    pc.ontrack = (e) => {
-        videoElement.srcObject = e.streams[0];
-    };
+    pc.ontrack = e => video.srcObject = e.streams[0];
 
     pc.onicecandidate = e => {
         if (e.candidate) return;
-        database.ref('signals/' + camId + '/' + viewerId).set({
+        db.ref('signals/' + camId + '/' + viewerId).set({
             type: 'offer',
             offer: pc.localDescription,
             viewerId: viewerId
@@ -150,12 +85,9 @@ function setupConnection(camId, videoElement) {
     };
 
     pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.createOffer().then(o => pc.setLocalDescription(o));
 
-    pc.createOffer().then(offer => {
-        return pc.setLocalDescription(offer);
-    }).catch(console.error);
-
-    database.ref('answers/' + viewerId).on('value', snap => {
+    db.ref('answers/' + viewerId).on('value', snap => {
         const data = snap.val();
         if (data && data.answer) {
             pc.setRemoteDescription(new RTCSessionDescription(data.answer));
@@ -163,9 +95,8 @@ function setupConnection(camId, videoElement) {
     });
 }
 
-monitorCameras();
-
+refreshGrid();
+setInterval(refreshGrid, 5000); // Refresh grid every 5s to detect new cams
 </script>
-
 </body>
 </html>
