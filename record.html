@@ -31,57 +31,22 @@
 
 
 <script>
+// Config Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-  authDomain: "kykychat-24c7f.firebaseapp.com",
-  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-  projectId: "kykychat-24c7f",
-  storageBucket: "kykychat-24c7f.firebasestorage.app",
-  messagingSenderId: "342562811927",
-  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.appspot.com",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
 };
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
 const startBtn = document.getElementById('startBtn');
-let localStream;
-
-startBtn.onclick = async () => {
-    startBtn.disabled = true;
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        const myId = 'cam-' + Math.random().toString(36).substr(2, 9);
-        const signalsRef = database.ref('signals/' + myId);
-
-        signalsRef.onDisconnect().remove();
-
-        signalsRef.on('child_added', async snap => {
-            const data = snap.val();
-            if (data.type === 'offer') {
-                const pc = new RTCPeerConnection();
-                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-
-                database.ref('answers/' + data.viewerId).set({
-                    answer: pc.localDescription,
-                    cameraId: myId
-                });
-            }
-        });
-
-        alert("Caméra active.");
-    } catch (err) {
-        console.error(err);
-        alert("Erreur d'accès caméra.");
-        startBtn.disabled = false;
-    }
-};
-const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
+
 let localStream;
 let signalsRef;
 let myId;
@@ -114,10 +79,10 @@ startBtn.onclick = async () => {
             }
         });
 
-        alert("Caméra active.");
+        console.log("Caméra active, prête à être visionnée.");
     } catch (err) {
         console.error(err);
-        alert("Erreur d'accès caméra.");
+        alert("Erreur d'accès à la caméra : " + err.message);
         startBtn.disabled = false;
         stopBtn.style.display = 'none';
     }
@@ -132,8 +97,9 @@ stopBtn.onclick = () => {
     }
     startBtn.disabled = false;
     stopBtn.style.display = 'none';
-    alert("Caméra arrêtée.");
+    console.log("Caméra arrêtée.");
 };
+
 
 </script>
 
