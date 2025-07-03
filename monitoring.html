@@ -54,96 +54,117 @@
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-  authDomain: "kykychat-24c7f.firebaseapp.com",
-  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-  projectId: "kykychat-24c7f",
-  storageBucket: "kykychat-24c7f.firebasestorage.app",
-  messagingSenderId: "342562811927",
-  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.appspot.com",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
 };
+
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-const gridSize = 16;
-const cams = [];
-const peerConnections = {};
-const streams = {};
-const camElements = [];
+const viewerId = 'viewer-' + Math.random().toString(36).substr(2, 9);
 
-for (let i = 0; i < gridSize; i++) {
-    const div = document.createElement('div');
-    div.className = 'cam';
-    div.innerHTML = `<div class="no-data">NO DATA</div>`;
-    document.body.appendChild(div);
-    camElements.push(div);
+function monitorCameras() {
+    const grid = document.getElementById('grid');
+    
+    database.ref('signals').on('value', snapshot => {
+        grid.innerHTML = ''; // Clear grid
 
-    div.onclick = () => {
-        if (div.classList.contains('zoom')) {
-            div.classList.remove('zoom');
-        } else {
-            camElements.forEach(el => el.classList.remove('zoom'));
-            div.classList.add('zoom');
+        const cams = snapshot.val();
+        const camList = cams ? Object.keys(cams) : [];
+
+        for (let i = 0; i < 16; i++) {
+            const cell = document.createElement('div');
+            cell.style.flex = '1 0 25%';
+            cell.style.aspectRatio = '16/9';
+            cell.style.border = '1px solid gray';
+            cell.style.position = 'relative';
+            cell.style.background = 'black';
+            cell.style.overflow = 'hidden';
+
+            if (i < camList.length) {
+                const camId = camList[i];
+                const video = document.createElement('video');
+                video.autoplay = true;
+                video.muted = true;
+                video.style.filter = 'grayscale(100%)';
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'cover';
+                
+                cell.appendChild(video);
+                setupConnection(camId, video);
+
+                // Agrandissement au clic
+                cell.onclick = () => {
+                    if (cell.style.position === 'fixed') {
+                        cell.style = '';
+                        monitorCameras();
+                    } else {
+                        Array.from(grid.children).forEach(c => c.style.display = 'none');
+                        cell.style.position = 'fixed';
+                        cell.style.top = '0';
+                        cell.style.left = '0';
+                        cell.style.width = '100%';
+                        cell.style.height = '100%';
+                        cell.style.zIndex = '10';
+                        cell.style.background = 'black';
+                    }
+                };
+
+            } else {
+                const txt = document.createElement('div');
+                txt.innerText = 'NO DATA';
+                txt.style.color = 'white';
+                txt.style.fontFamily = 'monospace';
+                txt.style.fontSize = '20px';
+                txt.style.display = 'flex';
+                txt.style.alignItems = 'center';
+                txt.style.justifyContent = 'center';
+                txt.style.height = '100%';
+                cell.appendChild(txt);
+            }
+
+            grid.appendChild(cell);
         }
-    };
+    });
 }
 
-database.ref('signals').on('value', snap => {
-    const cameras = snap.val() || {};
-    const camIds = Object.keys(cameras);
+function setupConnection(camId, videoElement) {
+    const pc = new RTCPeerConnection();
+    pc.ontrack = (e) => {
+        videoElement.srcObject = e.streams[0];
+    };
 
-    camIds.forEach((camId, index) => {
-        if (index >= gridSize) return;
-        if (streams[camId]) return;
+    pc.onicecandidate = e => {
+        if (e.candidate) return;
+        database.ref('signals/' + camId + '/' + viewerId).set({
+            type: 'offer',
+            offer: pc.localDescription,
+            viewerId: viewerId
+        });
+    };
 
-        const pc = new RTCPeerConnection();
-        peerConnections[camId] = pc;
+    pc.addTransceiver('video', { direction: 'recvonly' });
 
-        const div = camElements[index];
-        div.innerHTML = '';
+    pc.createOffer().then(offer => {
+        return pc.setLocalDescription(offer);
+    }).catch(console.error);
 
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.playsInline = true;
-        div.appendChild(video);
-
-        pc.ontrack = e => {
-            video.srcObject = e.streams[0];
-            streams[camId] = e.streams[0];
-        };
-
-        pc.onicecandidate = event => {
-            if (event.candidate) return;
-        };
-
-        (async () => {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-
-            const viewerId = 'viewer-' + Math.random().toString(36).substr(2, 9);
-
-            database.ref('signals/' + camId).push({
-                type: 'offer',
-                offer: pc.localDescription,
-                viewerId
-            });
-
-            database.ref('answers/' + viewerId).on('value', async snap => {
-                const data = snap.val();
-                if (data && data.answer) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                    database.ref('answers/' + viewerId).remove();
-                }
-            });
-        })();
-    });
-
-    for (let i = camIds.length; i < gridSize; i++) {
-        if (!camElements[i].querySelector('.no-data')) {
-            camElements[i].innerHTML = `<div class="no-data">NO DATA</div>`;
+    database.ref('answers/' + viewerId).on('value', snap => {
+        const data = snap.val();
+        if (data && data.answer) {
+            pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         }
-    }
-});
+    });
+}
+
+monitorCameras();
+
 </script>
 
 </body>
