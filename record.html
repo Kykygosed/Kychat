@@ -1,37 +1,19 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Caméra Surveillance</title>
-<style>
-    body {
-        background: black;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-    }
-    button {
-        background: green;
-        color: white;
-        font-size: 1.5rem;
-        padding: 15px 30px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-    }
-</style>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <title>Record Cam</title>
+    <style>
+        body { margin: 0; background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        button { background: green; color: white; padding: 20px; font-size: 20px; border: none; cursor: pointer; }
+    </style>
 </head>
 <body>
+<button id="start">Démarrer Caméra</button>
 
-<button id="startBtn">Démarrer Caméra</button>
-<button id="stopBtn" style="display:none; background:red; color:white; font-size:1.5rem; padding:15px 30px; border:none; border-radius:8px; cursor:pointer; margin-left:20px;">Stop</button>
-
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-// Config Firebase
 const firebaseConfig = {
     apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
     authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -41,67 +23,41 @@ const firebaseConfig = {
     messagingSenderId: "342562811927",
     appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
 };
+
 firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+const db = firebase.database();
+const camId = 'cam-' + Math.random().toString(36).substr(2, 9);
+let pc, stream;
 
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-
-let localStream;
-let signalsRef;
-let myId;
-
-startBtn.onclick = async () => {
-    startBtn.disabled = true;
-    stopBtn.style.display = 'inline-block';
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        myId = 'cam-' + Math.random().toString(36).substr(2, 9);
-        signalsRef = database.ref('signals/' + myId);
-
-        signalsRef.onDisconnect().remove();
-
-        signalsRef.on('child_added', async snap => {
-            const data = snap.val();
-            if (data.type === 'offer') {
-                const pc = new RTCPeerConnection();
-                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-
-                database.ref('answers/' + data.viewerId).set({
-                    answer: pc.localDescription,
-                    cameraId: myId
-                });
-            }
-        });
-
-        console.log("Caméra active, prête à être visionnée.");
-    } catch (err) {
-        console.error(err);
-        alert("Erreur d'accès à la caméra : " + err.message);
-        startBtn.disabled = false;
-        stopBtn.style.display = 'none';
-    }
+document.getElementById('start').onclick = async () => {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    db.ref('signals/' + camId).set({ status: 'online' });
+    listenOffers();
+    document.getElementById('start').style.display = 'none';
 };
 
-stopBtn.onclick = () => {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-    }
-    if (signalsRef) {
-        signalsRef.remove();
-    }
-    startBtn.disabled = false;
-    stopBtn.style.display = 'none';
-    console.log("Caméra arrêtée.");
-};
+function listenOffers() {
+    db.ref('signals/' + camId).on('child_added', snap => {
+        const data = snap.val();
+        if (data.type === 'offer' && data.viewerId) {
+            handleOffer(data.offer, data.viewerId);
+        }
+    });
+}
 
+function handleOffer(offer, viewerId) {
+    pc = new RTCPeerConnection();
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
+    pc.onicecandidate = e => {
+        if (e.candidate) return;
+        db.ref('answers/' + viewerId).set({ answer: pc.localDescription });
+    };
+
+    pc.setRemoteDescription(new RTCSessionDescription(offer))
+      .then(() => pc.createAnswer())
+      .then(answer => pc.setLocalDescription(answer));
+}
 </script>
-
 </body>
 </html>
