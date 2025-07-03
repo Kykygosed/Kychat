@@ -27,6 +27,8 @@
 <body>
 
 <button id="startBtn">Démarrer Caméra</button>
+<button id="stopBtn" style="display:none; background:red; color:white; font-size:1.5rem; padding:15px 30px; border:none; border-radius:8px; cursor:pointer; margin-left:20px;">Stop</button>
+
 
 <script>
 const firebaseConfig = {
@@ -78,6 +80,61 @@ startBtn.onclick = async () => {
         startBtn.disabled = false;
     }
 };
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+let localStream;
+let signalsRef;
+let myId;
+
+startBtn.onclick = async () => {
+    startBtn.disabled = true;
+    stopBtn.style.display = 'inline-block';
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        myId = 'cam-' + Math.random().toString(36).substr(2, 9);
+        signalsRef = database.ref('signals/' + myId);
+
+        signalsRef.onDisconnect().remove();
+
+        signalsRef.on('child_added', async snap => {
+            const data = snap.val();
+            if (data.type === 'offer') {
+                const pc = new RTCPeerConnection();
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                database.ref('answers/' + data.viewerId).set({
+                    answer: pc.localDescription,
+                    cameraId: myId
+                });
+            }
+        });
+
+        alert("Caméra active.");
+    } catch (err) {
+        console.error(err);
+        alert("Erreur d'accès caméra.");
+        startBtn.disabled = false;
+        stopBtn.style.display = 'none';
+    }
+};
+
+stopBtn.onclick = () => {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    if (signalsRef) {
+        signalsRef.remove();
+    }
+    startBtn.disabled = false;
+    stopBtn.style.display = 'none';
+    alert("Caméra arrêtée.");
+};
+
 </script>
 
 </body>
