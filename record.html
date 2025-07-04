@@ -1,63 +1,63 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Record Cam</title>
-    <style>
-        body { margin: 0; background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        button { background: green; color: white; padding: 20px; font-size: 20px; border: none; cursor: pointer; }
-    </style>
+  <title>Caméra Surveillance</title>
+  <style>
+    body { background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    button { background: green; color: white; font-size: 20px; padding: 20px; border: none; cursor: pointer; }
+  </style>
 </head>
 <body>
-<button id="start">Démarrer Caméra</button>
+<button id="start">Activer Caméra</button>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
 const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.appspot.com",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.appspot.com",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const camId = 'cam-' + Math.random().toString(36).substr(2, 9);
-let pc, stream;
+const camId = "cam-" + Math.random().toString(36).substr(2, 9);
+let stream;
 
 document.getElementById('start').onclick = async () => {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    db.ref('signals/' + camId).set({ status: 'online' });
-    listenOffers();
-    document.getElementById('start').style.display = 'none';
+  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  db.ref("signals/" + camId).set({ online: true });
+  listenForOffers();
+  document.getElementById('start').style.display = 'none';
 };
 
-function listenOffers() {
-    db.ref('signals/' + camId).on('child_added', snap => {
-        const data = snap.val();
-        if (data.type === 'offer' && data.viewerId) {
-            handleOffer(data.offer, data.viewerId);
-        }
-    });
-}
+function listenForOffers() {
+  db.ref("signals/" + camId + "/offers").on('child_added', async (snap) => {
+    const data = snap.val();
+    const viewerId = snap.key;
 
-function handleOffer(offer, viewerId) {
-    pc = new RTCPeerConnection();
+    const pc = new RTCPeerConnection();
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
     pc.onicecandidate = e => {
-        if (e.candidate) return;
-        db.ref('answers/' + viewerId).set({ answer: pc.localDescription });
+      if (e.candidate) {
+        db.ref("signals/" + camId + "/answers/" + viewerId + "/candidates").push(e.candidate.toJSON());
+      }
     };
 
-    pc.setRemoteDescription(new RTCSessionDescription(offer))
-      .then(() => pc.createAnswer())
-      .then(answer => pc.setLocalDescription(answer));
+    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    db.ref("signals/" + camId + "/answers/" + viewerId).update({ answer: pc.localDescription.toJSON() });
+  });
 }
 </script>
 </body>
 </html>
+
