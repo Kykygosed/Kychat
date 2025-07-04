@@ -59,14 +59,37 @@
       bottom: 10px;
       z-index: 3;
     }
+
+    .waypoint-input {
+      margin-bottom: 5px;
+    }
+
+    button {
+      background: black;
+      border: 1px solid #0f0;
+      color: #0f0;
+      padding: 5px;
+      font-family: monospace;
+    }
+
+    input {
+      background: black;
+      color: #0f0;
+      border: 1px solid #0f0;
+      padding: 5px;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
 
 <div id="overlay">
   <h2>Navigation Display A320</h2>
-  <p>Entrez les noms des waypoints (ex: WPT1,WPT2,WPT3)</p>
-  <input id="waypointsInput" style="width: 80%; padding: 5px;"><br><br>
+  <p>Ajoute les noms des waypoints dans l’ordre :</p>
+  <div id="waypointContainer">
+    <div class="waypoint-input"><input type="text" placeholder="Waypoint 1"></div>
+  </div>
+  <button onclick="addWaypointField()">➕ Ajouter un waypoint</button><br><br>
   <button onclick="startND()">Afficher ND</button>
   <p id="status"></p>
 </div>
@@ -75,7 +98,6 @@
   <canvas id="ndCanvas" width="320" height="320"></canvas>
 </div>
 <div id="info"></div>
-
 <div class="text-zone">SPD ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;HDG ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;DIST ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TIME ---</div>
 
 <!-- Firebase -->
@@ -83,15 +105,16 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
 <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-      authDomain: "kykychat-24c7f.firebaseapp.com",
-      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-      projectId: "kykychat-24c7f",
-      storageBucket: "kykychat-24c7f.appspot.com",
-      messagingSenderId: "342562811927",
-      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-    };
+  // 👉 Ta config Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.appspot.com",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
@@ -100,9 +123,7 @@
   let heading = 0;
 
   window.addEventListener("deviceorientationabsolute", (e) => {
-    if (e.alpha !== null) {
-      heading = 360 - e.alpha;
-    }
+    if (e.alpha !== null) heading = 360 - e.alpha;
   }, true);
 
   navigator.geolocation.watchPosition(pos => {
@@ -116,6 +137,14 @@
     return deg * Math.PI / 180;
   }
 
+  function addWaypointField() {
+    const container = document.getElementById("waypointContainer");
+    const div = document.createElement("div");
+    div.className = "waypoint-input";
+    div.innerHTML = `<input type="text" placeholder="Waypoint ${container.children.length + 1}">`;
+    container.appendChild(div);
+  }
+
   function drawND() {
     requestAnimationFrame(drawND);
     if (!userPos || waypoints.length === 0) return;
@@ -127,7 +156,7 @@
     ctx.translate(160, 160);
     ctx.rotate(-toRad(heading));
 
-    // Rose des caps
+    // Rose
     ctx.strokeStyle = "#0f0";
     ctx.lineWidth = 1;
     ctx.font = "10px monospace";
@@ -138,24 +167,30 @@
       ctx.fillText(h.toString().padStart(3, '0'), x - 10, y + 4);
     }
 
-    // Cercle
+    // Cercle principal
     ctx.beginPath();
     ctx.arc(0, 0, 150, 0, 2 * Math.PI);
     ctx.stroke();
 
-    // Route
+    // Segments successifs
     ctx.beginPath();
     ctx.strokeStyle = "lime";
     ctx.lineWidth = 2;
-    waypoints.forEach((wp, i) => {
-      const dx = (wp.lon - userPos.lon) * 9000;
-      const dy = (wp.lat - userPos.lat) * -11000;
-      if (i === 0) ctx.moveTo(dx, dy);
-      else ctx.lineTo(dx, dy);
-    });
+
+    let points = [{ lat: userPos.lat, lon: userPos.lon }, ...waypoints];
+    for (let i = 0; i < points.length - 1; i++) {
+      let p1 = points[i];
+      let p2 = points[i + 1];
+      let dx1 = (p1.lon - userPos.lon) * 9000;
+      let dy1 = (p1.lat - userPos.lat) * -11000;
+      let dx2 = (p2.lon - userPos.lon) * 9000;
+      let dy2 = (p2.lat - userPos.lat) * -11000;
+      ctx.moveTo(dx1, dy1);
+      ctx.lineTo(dx2, dy2);
+    }
     ctx.stroke();
 
-    // Waypoints points
+    // Waypoint dots
     ctx.fillStyle = "lime";
     waypoints.forEach(wp => {
       const dx = (wp.lon - userPos.lon) * 9000;
@@ -182,15 +217,16 @@
   }
 
   async function startND() {
-    const input = document.getElementById("waypointsInput").value;
-    const names = input.split(',').map(n => n.trim().toUpperCase());
+    const inputs = document.querySelectorAll("#waypointContainer input");
     waypoints = [];
-    for (let name of names) {
+    for (let input of inputs) {
+      const name = input.value.trim().toUpperCase();
+      if (!name) continue;
       const doc = await db.collection("waypoints").doc(name).get();
       if (doc.exists) {
         waypoints.push(doc.data());
       } else {
-        document.getElementById("status").innerText = `❌ Waypoint ${name} introuvable`;
+        document.getElementById("status").innerText = `❌ ${name} introuvable`;
         return;
       }
     }
@@ -198,6 +234,6 @@
     drawND();
   }
 </script>
+
 </body>
-  </html>
-  
+</html>
