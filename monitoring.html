@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Monitoring</title>
+  <title>Monitoring Caméras</title>
   <style>
-    body { margin: 0; background: black; display: flex; flex-wrap: wrap; width: 100vw; height: 100vh; }
-    .cell { flex: 1 0 25%; aspect-ratio: 16/9; border: 1px solid gray; position: relative; background: black; overflow: hidden; }
+    body { margin: 0; background: black; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); width: 100vw; height: 100vh; }
+    .cell { border: 1px solid #222; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: black; }
     .cell video { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%); }
-    .nodata { color: white; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100%; }
+    .label { color: white; font-family: monospace; position: absolute; z-index: 1; }
   </style>
 </head>
 <body>
+<div class="grid" id="grid"></div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -27,94 +28,48 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const gridSize = 16;
-
-const grid = document.createElement('div');
-grid.style.display = 'grid';
-grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-grid.style.gridTemplateRows = 'repeat(4, 1fr)';
-grid.style.height = '100vh';
-grid.style.width = '100vw';
-grid.style.background = 'black';
-document.body.appendChild(grid);
-
+const grid = document.getElementById('grid');
 const cells = [];
-for (let i = 0; i < gridSize; i++) {
-  const cell = document.createElement('div');
-  cell.style.border = '1px solid #222';
-  cell.style.position = 'relative';
-  cell.style.overflow = 'hidden';
-  cell.style.display = 'flex';
-  cell.style.alignItems = 'center';
-  cell.style.justifyContent = 'center';
-  cell.style.background = 'black';
-  cell.dataset.index = i;
 
+for (let i = 0; i < 16; i++) {
+  const div = document.createElement('div');
+  div.className = 'cell';
   const label = document.createElement('div');
+  label.className = 'label';
   label.textContent = 'NO DATA';
-  label.style.color = 'white';
-  label.style.fontFamily = 'monospace';
-  cell.appendChild(label);
-
-  grid.appendChild(cell);
-  cells.push({ container: cell, label, video: null });
+  div.appendChild(label);
+  grid.appendChild(div);
+  cells.push({ div, label, video: null });
 }
 
 db.ref("signals").on('value', snap => {
-  const cams = snap.val() || {};
-  const camIds = Object.keys(cams).filter(id => cams[id].online);
+  const data = snap.val() || {};
+  const active = Object.entries(data).filter(([id, obj]) => obj.online);
 
-  cells.forEach((c, idx) => {
-    if (c.video) {
-      c.video.remove();
-      c.video = null;
-      c.label.textContent = 'NO DATA';
-    }
-    c.container.style.zIndex = '0';
-    c.container.style.position = 'relative';
-    c.container.style.width = '100%';
-    c.container.style.height = '100%';
+  cells.forEach(cell => {
+    if (cell.video) cell.video.remove();
+    cell.label.textContent = 'NO DATA';
+    cell.video = null;
   });
 
-  camIds.slice(0, gridSize).forEach((id, idx) => {
-    setupViewer(id, cells[idx]);
+  active.slice(0, 16).forEach(([camId], index) => {
+    viewCamera(camId, cells[index]);
   });
 });
 
-function setupViewer(camId, cell) {
+function viewCamera(camId, cell) {
   const pc = new RTCPeerConnection();
-  
+  const viewerId = 'viewer-' + Math.random().toString(36).substr(2, 9);
+
   pc.ontrack = e => {
     if (cell.video) return;
     const vid = document.createElement('video');
     vid.srcObject = e.streams[0];
     vid.autoplay = true;
     vid.playsInline = true;
-    vid.style.width = '100%';
-    vid.style.height = '100%';
-    vid.style.filter = 'grayscale(100%)';
-    vid.style.objectFit = 'cover';
-    cell.container.appendChild(vid);
+    cell.div.appendChild(vid);
     cell.label.textContent = '';
     cell.video = vid;
-
-    vid.onclick = () => {
-      const expanded = cell.container.style.position === 'fixed';
-      cells.forEach(c => {
-        c.container.style.zIndex = '0';
-        c.container.style.position = 'relative';
-        c.container.style.width = '100%';
-        c.container.style.height = '100%';
-      });
-      if (!expanded) {
-        cell.container.style.position = 'fixed';
-        cell.container.style.top = '0';
-        cell.container.style.left = '0';
-        cell.container.style.width = '100vw';
-        cell.container.style.height = '100vh';
-        cell.container.style.zIndex = '999';
-      }
-    };
   };
 
   pc.onicecandidate = e => {
@@ -123,22 +78,22 @@ function setupViewer(camId, cell) {
     }
   };
 
-  const viewerId = "viewer-" + Math.random().toString(36).substr(2, 9);
-
   pc.createOffer().then(offer => {
     pc.setLocalDescription(offer);
     db.ref(`signals/${camId}/offers/${viewerId}`).set({ offer: offer.toJSON() });
+
     db.ref(`signals/${camId}/answers/${viewerId}/answer`).on('value', snap => {
       if (snap.exists()) {
         pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
       }
     });
+
     db.ref(`signals/${camId}/answers/${viewerId}/candidates`).on('child_added', s => {
       pc.addIceCandidate(new RTCIceCandidate(s.val()));
     });
   });
 }
 </script>
-
 </body>
 </html>
+
