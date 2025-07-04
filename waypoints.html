@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Waypoints Manager</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; }
+    #form {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 999;
+    }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+<div id="form">
+  <strong>Click on the map to add a waypoint</strong><br>
+  <span id="status"></span>
+</div>
+<div id="map"></div>
+
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // TODO: Remplace avec ta config Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyCpIVn9uYIbZGsMbNQ-ld1Ep8nmXXU9kY8",
+    authDomain: "kenzomc-ad1c2.firebaseapp.com",
+    projectId: "kenzomc-ad1c2",
+    storageBucket: "kenzomc-ad1c2.appspot.com",
+    messagingSenderId: "382727630278",
+    appId: "1:382727630278:web:122ed5b72552d3b3dc1c17"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const map = L.map('map').setView([48.85, 2.35], 5); // vue Europe
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OSM'
+  }).addTo(map);
+
+  map.on('click', async (e) => {
+    const lat = e.latlng.lat;
+    const lon = e.latlng.lng;
+    const name = prompt("Nom du waypoint ?");
+    if (!name) return;
+
+    try {
+      await db.collection("waypoints").doc(name.toUpperCase()).set({
+        name: name.toUpperCase(),
+        lat,
+        lon
+      });
+      L.marker([lat, lon]).addTo(map).bindPopup(name.toUpperCase());
+      document.getElementById("status").innerText = `✅ Waypoint "${name.toUpperCase()}" ajouté`;
+    } catch (e) {
+      console.error(e);
+      document.getElementById("status").innerText = `❌ Erreur : ${e.message}`;
+    }
+  });
+</script>
+</body>
+</html>
