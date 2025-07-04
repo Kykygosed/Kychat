@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Caméra Surveillance</title>
+  <title>Record - Surveillance</title>
   <style>
-    body { background: black; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    button { background: green; color: white; font-size: 20px; padding: 20px; border: none; cursor: pointer; }
+    body { background: black; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+    select, button { margin: 10px; padding: 10px; font-size: 16px; }
+    video { margin-top: 20px; width: 320px; height: 240px; background: #222; }
   </style>
 </head>
 <body>
-<button id="start">Activer Caméra</button>
+
+<select id="camSelect"></select>
+<button id="startBtn">Activer Caméra</button>
+<video id="preview" autoplay muted playsinline></video>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -27,22 +31,39 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const camId = "cam-" + Math.random().toString(36).substr(2, 9);
-let stream;
 
-document.getElementById('start').onclick = async () => {
-  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+let localStream;
+
+navigator.mediaDevices.enumerateDevices().then(devices => {
+  const cams = devices.filter(d => d.kind === 'videoinput');
+  cams.forEach(cam => {
+    const opt = document.createElement('option');
+    opt.value = cam.deviceId;
+    opt.textContent = cam.label || 'Caméra ' + (camSelect.length + 1);
+    camSelect.appendChild(opt);
+  });
+});
+
+startBtn.onclick = async () => {
+  const deviceId = camSelect.value;
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId } },
+    audio: false
+  });
+
+  preview.srcObject = localStream;
   db.ref("signals/" + camId).set({ online: true });
   listenForOffers();
-  document.getElementById('start').style.display = 'none';
+  startBtn.disabled = true;
 };
 
 function listenForOffers() {
-  db.ref("signals/" + camId + "/offers").on('child_added', async (snap) => {
+  db.ref("signals/" + camId + "/offers").on('child_added', async snap => {
     const data = snap.val();
     const viewerId = snap.key;
 
     const pc = new RTCPeerConnection();
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
     pc.onicecandidate = e => {
       if (e.candidate) {
@@ -55,9 +76,13 @@ function listenForOffers() {
     await pc.setLocalDescription(answer);
 
     db.ref("signals/" + camId + "/answers/" + viewerId).update({ answer: pc.localDescription.toJSON() });
+
+    db.ref("signals/" + camId + "/offers/" + viewerId + "/candidates").on('child_added', cSnap => {
+      const candidate = cSnap.val();
+      pc.addIceCandidate(new RTCIceCandidate(candidate));
+    });
   });
 }
 </script>
 </body>
 </html>
-
