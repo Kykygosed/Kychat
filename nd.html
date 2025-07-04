@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>A320 ND Sim</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: black; color: #00FF00;
+      font-family: monospace;
+      overflow: hidden;
+    }
+    #map {
+      position: absolute;
+      width: 100vmin;
+      height: 100vmin;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(0deg);
+      border-radius: 50%;
+      clip-path: circle(50%);
+      z-index: 1;
+    }
+    #overlay {
+      position: absolute;
+      width: 100vmin;
+      height: 100vmin;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 2;
+    }
+    #ui {
+      position: fixed;
+      top: 1em;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(0,0,0,0.8);
+      padding: 1em;
+      border-radius: 8px;
+      text-align: center;
+    }
+    #destInput {
+      width: 200px;
+      font-size: 1em;
+    }
+    button {
+      background: lime;
+      color: black;
+      font-weight: bold;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+    #headingLabel {
+      position: fixed;
+      top: 0.5em;
+      right: 1em;
+      color: cyan;
+      font-size: 1.2em;
+      z-index: 11;
+    }
+  </style>
+</head>
+<body>
+
+<div id="ui">
+  <input id="destInput" type="text" placeholder="Enter destination..." />
+  <div id="suggestions"></div>
+  <button onclick="startNavigation()">Set Destination</button>
+</div>
+<div id="headingLabel">HDG: 000°</div>
+<div id="map"></div>
+<img id="overlay" src="data:image/png;base64,REPLACE_THIS_WITH_BASE64_OF_OVERLAY" />
+
+<script>
+  let map, marker, watchId, heading = 0;
+  let origin = null, destination = null, directionsRenderer;
+
+  function startNavigation() {
+    const input = document.getElementById('destInput');
+    const place = input.value;
+    if (!place) return alert("Enter a destination.");
+
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: place }, function(results, status) {
+      if (status === 'OK') {
+        destination = results[0].geometry.location;
+        if (origin) drawRoute();
+      } else {
+        alert("Geocode error: " + status);
+      }
+    });
+  }
+
+  function drawRoute() {
+    const directionsService = new google.maps.DirectionsService();
+    if (!directionsRenderer) {
+      directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true, polylineOptions: { strokeColor: 'lime' } });
+      directionsRenderer.setMap(map);
+    }
+
+    directionsService.route({
+      origin: origin,
+      destination: destination,
+      travelMode: 'DRIVING'
+    }, function(result, status) {
+      if (status === 'OK') {
+        directionsRenderer.setDirections(result);
+      } else {
+        alert('Directions error: ' + status);
+      }
+    });
+  }
+
+  function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+      zoom: 14,
+      center: { lat: 0, lng: 0 },
+      disableDefaultUI: true,
+      styles: [{ elementType: "geometry", stylers: [{ color: "#000000" }] }],
+    });
+
+    marker = new google.maps.Marker({ map: map, icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 5, strokeColor: "yellow" } });
+
+    navigator.geolocation.watchPosition(pos => {
+      origin = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
+      map.setCenter(origin);
+      marker.setPosition(origin);
+      if (destination) drawRoute();
+    }, err => {
+      alert("Location error: " + err.message);
+    }, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    });
+
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+      window.addEventListener("deviceorientation", handleOrientation, true);
+    }
+  }
+
+  function handleOrientation(event) {
+    let alpha = event.alpha;
+    if (typeof event.webkitCompassHeading !== "undefined") {
+      alpha = event.webkitCompassHeading;
+    }
+
+    if (alpha !== null) {
+      heading = Math.round(alpha);
+      document.getElementById("headingLabel").innerText = `HDG: ${heading}°`;
+      document.getElementById("map").style.transform = `translate(-50%, -50%) rotate(${-heading}deg)`;
+    }
+  }
+
+  // Google Places autocomplete
+  let autocompleteService = new google.maps.places.AutocompleteService();
+  document.getElementById("destInput").addEventListener("input", function() {
+    const val = this.value;
+    const suggestionsDiv = document.getElementById("suggestions");
+    if (val.length < 2) {
+      suggestionsDiv.innerHTML = "";
+      return;
+    }
+    autocompleteService.getPlacePredictions({ input: val }, function(predictions, status) {
+      if (status !== google.maps.places.PlacesServiceStatus.OK) return;
+      suggestionsDiv.innerHTML = "";
+      predictions.forEach(pred => {
+        const btn = document.createElement("div");
+        btn.textContent = pred.description;
+        btn.style.cursor = "pointer";
+        btn.onclick = () => {
+          document.getElementById("destInput").value = pred.description;
+          suggestionsDiv.innerHTML = "";
+        };
+        suggestionsDiv.appendChild(btn);
+      });
+    });
+  });
+</script>
+
+<script async defer
+  src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_API_KEY&libraries=places&callback=initMap">
+</script>
+
+</body>
+</html>
