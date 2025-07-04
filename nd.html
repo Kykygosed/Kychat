@@ -1,239 +1,198 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>ND A320</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A320 ND</title>
   <style>
-    html, body {
+    body {
+      background-color: black;
+      color: #00ff00;
+      font-family: monospace;
       margin: 0;
-      padding: 0;
+      overflow: hidden;
+    }
+    #ndContainer {
+      position: relative;
+      width: 100vmin;
+      height: 100vmin;
+      margin: auto;
       background: black;
-      font-family: monospace;
-      color: #0f0;
-      overflow: hidden;
     }
-
-    #overlay {
-      position: absolute;
-      z-index: 2;
-      background: rgba(0,0,0,0.85);
-      color: #0f0;
-      padding: 20px;
+    #ndCanvas {
       width: 100%;
       height: 100%;
+      display: block;
     }
-
-    #nd {
+    #inputPanel {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 320px;
-      height: 320px;
-      border-radius: 50%;
-      border: 3px solid #0f0;
-      overflow: hidden;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px;
+      border: 1px solid #00ff00;
+      z-index: 5;
     }
-
-    canvas {
-      width: 100%;
-      height: 100%;
-    }
-
-    #info {
-      position: absolute;
-      top: 5px;
-      right: 10px;
-      color: #0f0;
-      font-size: 12px;
-      z-index: 3;
-    }
-
-    .text-zone {
-      position: absolute;
-      width: 100%;
-      text-align: center;
-      color: #0f0;
-      font-size: 12px;
-      bottom: 10px;
-      z-index: 3;
-    }
-
-    .waypoint-input {
+    #inputPanel input {
+      display: block;
       margin-bottom: 5px;
-    }
-
-    button {
       background: black;
-      border: 1px solid #0f0;
-      color: #0f0;
-      padding: 5px;
-      font-family: monospace;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      padding: 4px;
     }
-
-    input {
-      background: black;
-      color: #0f0;
-      border: 1px solid #0f0;
-      padding: 5px;
-      font-family: monospace;
+    #addBtn, #startBtn {
+      margin-top: 5px;
+      padding: 4px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-
-<div id="overlay">
-  <h2>Navigation Display A320</h2>
-  <p>Ajoute les noms des waypoints dans l’ordre :</p>
-  <div id="waypointContainer">
-    <div class="waypoint-input"><input type="text" placeholder="Waypoint 1"></div>
+<div id="ndContainer">
+  <canvas id="ndCanvas" width="600" height="600"></canvas>
+  <div id="inputPanel">
+    <div id="waypointInputs">
+      <input type="text" placeholder="Waypoint name" class="wp-input" />
+    </div>
+    <button id="addBtn">+</button>
+    <button id="startBtn">Afficher ND</button>
   </div>
-  <button onclick="addWaypointField()">➕ Ajouter un waypoint</button><br><br>
-  <button onclick="startND()">Afficher ND</button>
-  <p id="status"></p>
 </div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-<div id="nd">
-  <canvas id="ndCanvas" width="320" height="320"></canvas>
-</div>
-<div id="info"></div>
-<div class="text-zone">SPD ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;HDG ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;DIST ---&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TIME ---</div>
+const firebaseConfig = {
+  apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+  authDomain: "kykychat-24c7f.firebaseapp.com",
+  databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+  projectId: "kykychat-24c7f",
+  storageBucket: "kykychat-24c7f.appspot.com",
+  messagingSenderId: "342562811927",
+  appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+const canvas = document.getElementById("ndCanvas");
+const ctx = canvas.getContext("2d");
+let waypoints = [];
+let currentPos = { lat: 0, lon: 0, heading: 0 };
 
-<script>
-  // 👉 Ta config Firebase
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.appspot.com",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+function toRadians(deg) {
+  return deg * Math.PI / 180;
+}
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // m
+  const φ1 = toRadians(lat1);
+  const φ2 = toRadians(lat2);
+  const Δφ = toRadians(lat2 - lat1);
+  const Δλ = toRadians(lon2 - lon1);
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+function getBearing(lat1, lon1, lat2, lon2) {
+  const y = Math.sin(toRadians(lon2 - lon1)) * Math.cos(toRadians(lat2));
+  const x = Math.cos(toRadians(lat1)) * Math.sin(toRadians(lat2)) -
+            Math.sin(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.cos(toRadians(lon2 - lon1));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function drawND() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  let waypoints = [];
-  let userPos = null;
-  let heading = 0;
+  const cx = canvas.width / 2;
+  const cy = canvas.height;
+  const scale = 3; // meters per pixel
 
-  window.addEventListener("deviceorientationabsolute", (e) => {
-    if (e.alpha !== null) heading = 360 - e.alpha;
-  }, true);
+  // Draw arc scale
+  ctx.strokeStyle = "#00ff00";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 200, Math.PI, 2*Math.PI);
+  ctx.stroke();
 
+  // Draw own aircraft triangle
+  ctx.fillStyle = "yellow";
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 10);
+  ctx.lineTo(cx - 8, cy);
+  ctx.lineTo(cx + 8, cy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Draw waypoints & lines
+  let prev = { lat: currentPos.lat, lon: currentPos.lon };
+  for (let wp of waypoints) {
+    const dist = getDistance(currentPos.lat, currentPos.lon, wp.lat, wp.lon);
+    const brg = getBearing(currentPos.lat, currentPos.lon, wp.lat, wp.lon) - currentPos.heading;
+    const angle = toRadians(brg);
+    const x = cx + Math.sin(angle) * dist / scale;
+    const y = cy - Math.cos(angle) * dist / scale;
+
+    // Draw line from prev
+    const dist2 = getDistance(prev.lat, prev.lon, wp.lat, wp.lon);
+    const brg2 = getBearing(prev.lat, prev.lon, wp.lat, wp.lon) - currentPos.heading;
+    const x2 = cx + Math.sin(toRadians(brg2)) * dist2 / scale;
+    const y2 = cy - Math.cos(toRadians(brg2)) * dist2 / scale;
+    ctx.strokeStyle = "#00ff00";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Draw waypoint circle
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // Draw label
+    ctx.fillStyle = "#00ff00";
+    ctx.fillText(wp.name, x + 5, y - 5);
+
+    prev = wp;
+  }
+}
+
+function updateGPS() {
   navigator.geolocation.watchPosition(pos => {
-    userPos = {
-      lat: pos.coords.latitude,
-      lon: pos.coords.longitude
-    };
+    currentPos.lat = pos.coords.latitude;
+    currentPos.lon = pos.coords.longitude;
   });
+  window.addEventListener("deviceorientation", e => {
+    if (e.absolute) currentPos.heading = e.alpha;
+  });
+}
 
-  function toRad(deg) {
-    return deg * Math.PI / 180;
-  }
+function loadWaypoints(names) {
+  const promises = names.map(name => get(child(ref(db), `waypoints/${name}`)));
+  Promise.all(promises).then(snaps => {
+    waypoints = snaps.map(snap => ({
+      name: snap.key,
+      lat: snap.val().lat,
+      lon: snap.val().lon
+    }));
+    setInterval(drawND, 1000);
+  });
+}
 
-  function addWaypointField() {
-    const container = document.getElementById("waypointContainer");
-    const div = document.createElement("div");
-    div.className = "waypoint-input";
-    div.innerHTML = `<input type="text" placeholder="Waypoint ${container.children.length + 1}">`;
-    container.appendChild(div);
-  }
+// Add more input fields
+addBtn.onclick = () => {
+  const input = document.createElement("input");
+  input.placeholder = "Waypoint name";
+  input.classList.add("wp-input");
+  document.getElementById("waypointInputs").appendChild(input);
+};
 
-  function drawND() {
-    requestAnimationFrame(drawND);
-    if (!userPos || waypoints.length === 0) return;
-
-    const canvas = document.getElementById("ndCanvas");
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 320, 320);
-    ctx.save();
-    ctx.translate(160, 160);
-    ctx.rotate(-toRad(heading));
-
-    // Rose
-    ctx.strokeStyle = "#0f0";
-    ctx.lineWidth = 1;
-    ctx.font = "10px monospace";
-    for (let h = 0; h < 360; h += 30) {
-      let rad = toRad(h);
-      let x = Math.sin(rad) * 140;
-      let y = -Math.cos(rad) * 140;
-      ctx.fillText(h.toString().padStart(3, '0'), x - 10, y + 4);
-    }
-
-    // Cercle principal
-    ctx.beginPath();
-    ctx.arc(0, 0, 150, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    // Segments successifs
-    ctx.beginPath();
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 2;
-
-    let points = [{ lat: userPos.lat, lon: userPos.lon }, ...waypoints];
-    for (let i = 0; i < points.length - 1; i++) {
-      let p1 = points[i];
-      let p2 = points[i + 1];
-      let dx1 = (p1.lon - userPos.lon) * 9000;
-      let dy1 = (p1.lat - userPos.lat) * -11000;
-      let dx2 = (p2.lon - userPos.lon) * 9000;
-      let dy2 = (p2.lat - userPos.lat) * -11000;
-      ctx.moveTo(dx1, dy1);
-      ctx.lineTo(dx2, dy2);
-    }
-    ctx.stroke();
-
-    // Waypoint dots
-    ctx.fillStyle = "lime";
-    waypoints.forEach(wp => {
-      const dx = (wp.lon - userPos.lon) * 9000;
-      const dy = (wp.lat - userPos.lat) * -11000;
-      ctx.beginPath();
-      ctx.arc(dx, dy, 3, 0, 2 * Math.PI);
-      ctx.fill();
-    });
-
-    // Triangle avion
-    ctx.fillStyle = "yellow";
-    ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(-7, 10);
-    ctx.lineTo(7, 10);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-
-    document.getElementById("info").innerHTML =
-      `HDG ${Math.round(heading)}°<br>` +
-      `LAT ${userPos.lat.toFixed(4)}<br>LON ${userPos.lon.toFixed(4)}`;
-  }
-
-  async function startND() {
-    const inputs = document.querySelectorAll("#waypointContainer input");
-    waypoints = [];
-    for (let input of inputs) {
-      const name = input.value.trim().toUpperCase();
-      if (!name) continue;
-      const doc = await db.collection("waypoints").doc(name).get();
-      if (doc.exists) {
-        waypoints.push(doc.data());
-      } else {
-        document.getElementById("status").innerText = `❌ ${name} introuvable`;
-        return;
-      }
-    }
-    document.getElementById("overlay").style.display = "none";
-    drawND();
-  }
+// Start ND
+startBtn.onclick = () => {
+  const names = [...document.querySelectorAll(".wp-input")].map(i => i.value.trim()).filter(n => n);
+  updateGPS();
+  loadWaypoints(names);
+  document.getElementById("inputPanel").style.display = "none";
+};
 </script>
-
 </body>
 </html>
