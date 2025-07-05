@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+          <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -27,6 +27,7 @@
       padding: 10px;
       border: 1px solid lime;
       border-radius: 8px;
+      z-index: 10;
     }
     #controls input, #controls button {
       background: black;
@@ -35,6 +36,18 @@
       margin-top: 4px;
       padding: 4px;
       font-family: monospace;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: white;
+      font-family: monospace;
+      background: rgba(0,0,0,0.6);
+      padding: 10px;
+      border: 1px solid lime;
+      border-radius: 8px;
+      z-index: 10;
     }
   </style>
 </head>
@@ -47,18 +60,24 @@
     <button onclick="addWaypointInput()">+</button>
     <button onclick="startND()">Afficher ND</button>
   </div>
+  <div id="info"></div>
 
   <canvas id="ndCanvas" width="512" height="512"></canvas>
-  <audio id="trafficSound" src="traffic.mp3"></audio>
+
+  <audio id="traffic" src="traffic.mp3"></audio>
+  <audio id="descend" src="descend.mp3"></audio>
+  <audio id="cnow" src="cnow.mp3"></audio>
+  <audio id="dnow" src="dnow.mp3"></audio>
+
   <script>
     const canvas = document.getElementById('ndCanvas');
     const ctx = canvas.getContext('2d');
-    const trafficSound = document.getElementById('trafficSound');
+    const infoDiv = document.getElementById('info');
     let heading = 0;
-    let currentPos = { lat: 48.8566, lon: 2.3522 }; // Paris
+    let currentPos = { lat: 48.8566, lon: 2.3522 };
     let waypoints = [];
-    let nextWaypointIndex = 0;
-    let realFlights = [];
+    let currentWaypointIndex = 0;
+    let aircrafts = [];
 
     function requestPermissions() {
       if (navigator.geolocation) {
@@ -101,136 +120,153 @@
         const coord = await getWaypointCoordinates(input.value);
         if (coord) waypoints.push(coord);
       }
-      fetchRealFlights();
+      fetchRealAircrafts();
       drawND();
-      setInterval(fetchRealFlights, 10000);
     }
 
-    async function fetchRealFlights() {
-      const d = 0.09;
-      const url = `https://opensky-network.org/api/states/all?lamin=${currentPos.lat - d}&lomin=${currentPos.lon - d}&lamax=${currentPos.lat + d}&lomax=${currentPos.lon + d}`;
-      try {
-        const res = await fetch(url);
-        const json = await res.json();
-        realFlights = (json.states || []).map(s => ({
-          callsign: s[1]?.trim(),
-          lat: s[6], lon: s[5],
-          type: s[8] || '',
-        })).filter(f => f.lat && f.lon);
-      } catch (e) { console.warn("Erreur OpenSky", e); }
+    function degToRad(deg) {
+      return deg * Math.PI / 180;
     }
 
-    function toRad(deg) { return deg * Math.PI / 180; }
-
-    function getDistance(a, b) {
+    function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371000;
-      const dLat = toRad(b.lat - a.lat);
-      const dLon = toRad(b.lon - a.lon);
-      const lat1 = toRad(a.lat);
-      const lat2 = toRad(b.lat);
-      const aVal = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+      const dLat = degToRad(lat2 - lat1);
+      const dLon = degToRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(degToRad(lat1)) * Math.cos(degToRad(lat2)) * Math.sin(dLon/2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     function drawND() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const cx = canvas.width / 2;
-      const cy = canvas.height;
-      const maxRadius = 250;
-      const scale = 10000; // 0.0001 deg ≈ 11m
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height;
+      const scale = 10000; // scale factor
+      const maxDist = 10000; // 10km ND radius
 
-      // Arcs ND
-      for (let r = 60; r <= maxRadius; r += 60) {
+      // Draw rose arc
+      for (let r = 60; r <= 180; r += 60) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.setLineDash([5, 3]);
         ctx.beginPath();
-        ctx.strokeStyle = r === maxRadius ? 'white' : '#ffffff88';
-        ctx.setLineDash(r === maxRadius ? [] : [5, 5]);
-        ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+        ctx.arc(centerX, centerY, r, Math.PI, 2 * Math.PI);
         ctx.stroke();
       }
-
       ctx.setLineDash([]);
 
-      // Ticks
-      ctx.fillStyle = 'white';
-      for (let deg = 0; deg < 360; deg += 30) {
-        const angle = toRad(deg - heading);
-        const x = cx + maxRadius * Math.sin(angle);
-        const y = cy - maxRadius * Math.cos(angle);
-        ctx.fillText((deg/10).toString().padStart(2, '0'), x - 6, y);
+      // Heading scale with labels
+      for (let deg = 0; deg < 360; deg += 10) {
+        const angle = degToRad(deg - heading);
+        const x = centerX + 180 * Math.sin(angle);
+        const y = centerY - 180 * Math.cos(angle);
+        ctx.fillStyle = 'white';
+        ctx.fillText(deg.toString().padStart(3, '0'), x - 8, y);
       }
 
-      // Triangle avion
+      // Draw aircraft triangle
       ctx.fillStyle = 'yellow';
       ctx.beginPath();
-      ctx.moveTo(cx, cy - 20);
-      ctx.lineTo(cx - 10, cy);
-      ctx.lineTo(cx + 10, cy);
+      ctx.moveTo(centerX, centerY - 20);
+      ctx.lineTo(centerX - 10, centerY);
+      ctx.lineTo(centerX + 10, centerY);
       ctx.closePath();
       ctx.fill();
 
-      // Itinéraire et waypoints
-      if (waypoints.length) {
+      // Draw route to waypoints
+      if (waypoints.length > 0) {
         ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        let last = currentPos;
-        waypoints.forEach(wp => {
-          const dx = (wp.lon - currentPos.lon) * scale;
-          const dy = (wp.lat - currentPos.lat) * -scale;
-          ctx.lineTo(cx + dx, cy + dy);
-          last = wp;
-        });
+        ctx.moveTo(centerX, centerY);
+
+        let prev = currentPos;
+        for (let i = 0; i < waypoints.length; i++) {
+          const dx = (waypoints[i].lon - currentPos.lon) * scale;
+          const dy = (waypoints[i].lat - currentPos.lat) * -scale;
+          const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+          const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
+          ctx.lineTo(centerX + rotatedX, centerY + rotatedY);
+        }
         ctx.stroke();
 
-        // Marquer les waypoints
-        waypoints.forEach((wp, i) => {
-          const dx = (wp.lon - currentPos.lon) * scale;
-          const dy = (wp.lat - currentPos.lat) * -scale;
-          const d = getDistance(currentPos, wp);
-          if (d < 5 && i === nextWaypointIndex) nextWaypointIndex++;
+        // Draw waypoints with names
+        for (let i = 0; i < waypoints.length; i++) {
+          const dx = (waypoints[i].lon - currentPos.lon) * scale;
+          const dy = (waypoints[i].lat - currentPos.lat) * -scale;
+          const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+          const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
+
           ctx.beginPath();
-          ctx.arc(cx + dx, cy + dy, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = (i === nextWaypointIndex) ? 'white' : 'lime';
+          ctx.arc(centerX + rotatedX, centerY + rotatedY, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = i === currentWaypointIndex ? 'white' : 'lime';
           ctx.fill();
-          ctx.fillStyle = (i === nextWaypointIndex) ? 'white' : 'lime';
-          ctx.fillText(wp.name, cx + dx + 5, cy + dy);
-        });
+
+          ctx.fillText(waypoints[i].name, centerX + rotatedX + 5, centerY + rotatedY);
+
+          // Check if reached
+          if (i === currentWaypointIndex) {
+            const dist = getDistance(currentPos.lat, currentPos.lon, waypoints[i].lat, waypoints[i].lon);
+            if (dist < 5) currentWaypointIndex++;
+            const speed = 15; // m/s (simu)
+            const eta = new Date(Date.now() + dist / speed * 1000).toLocaleTimeString();
+            infoDiv.innerText = `NEXT: ${waypoints[i].name}\nDIST: ${dist.toFixed(0)}m\nETA: ${eta}`;
+          }
+        }
       }
 
-      // Avions réels
-      realFlights.forEach(f => {
-        const dx = (f.lon - currentPos.lon) * scale;
-        const dy = (f.lat - currentPos.lat) * -scale;
-        const dist = getDistance(currentPos, f);
-        if (dist > 10000) return;
+      // Draw real aircrafts
+      aircrafts.forEach(ac => {
+        const dx = (ac.lon - currentPos.lon) * scale;
+        const dy = (ac.lat - currentPos.lat) * -scale;
+        const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+        const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
+
+        const dist = getDistance(currentPos.lat, currentPos.lon, ac.lat, ac.lon);
+        if (dist > maxDist) return;
+
         let color = 'blue';
-        if (dist < 50) { color = 'yellow'; trafficSound.play(); }
-        if (dist < 20) color = 'red';
-        ctx.fillStyle = color;
+        if (dist < 50) {
+          color = 'yellow';
+          document.getElementById('traffic').play();
+        }
+        if (dist < 20) {
+          color = 'red';
+          const who = Math.random() < 0.5;
+          (who ? document.getElementById('dnow') : document.getElementById('cnow')).play();
+        }
+
+        ctx.strokeStyle = color;
         ctx.beginPath();
-        ctx.moveTo(cx + dx, cy + dy - 5);
-        ctx.lineTo(cx + dx - 5, cy + dy);
-        ctx.lineTo(cx + dx, cy + dy + 5);
-        ctx.lineTo(cx + dx + 5, cy + dy);
+        ctx.moveTo(centerX + rotatedX, centerY + rotatedY - 5);
+        ctx.lineTo(centerX + rotatedX - 5, centerY + rotatedY);
+        ctx.lineTo(centerX + rotatedX, centerY + rotatedY + 5);
+        ctx.lineTo(centerX + rotatedX + 5, centerY + rotatedY);
         ctx.closePath();
-        ctx.fill();
-        ctx.fillText(`${f.callsign || ''}`, cx + dx + 6, cy + dy);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillText(ac.callsign || 'UNK', centerX + rotatedX + 8, centerY + rotatedY - 5);
       });
 
-      // Infos texte en haut droite
-      if (waypoints[nextWaypointIndex]) {
-        const next = waypoints[nextWaypointIndex];
-        const dist = getDistance(currentPos, next);
-        const speed = 100; // m/s par défaut, améliorable
-        const eta = new Date(Date.now() + dist / speed * 1000);
-        ctx.fillStyle = 'white';
-        ctx.fillText(`NEXT: ${next.name}`, canvas.width - 140, 20);
-        ctx.fillText(`DST: ${Math.round(dist)}m`, canvas.width - 140, 35);
-        ctx.fillText(`ETA: ${eta.toTimeString().split(' ')[0]}`, canvas.width - 140, 50);
-      }
-
       requestAnimationFrame(drawND);
+    }
+
+    async function fetchRealAircrafts() {
+      try {
+        const res = await fetch(`https://opensky-network.org/api/states/all?lamin=${currentPos.lat - 0.1}&lomin=${currentPos.lon - 0.1}&lamax=${currentPos.lat + 0.1}&lomax=${currentPos.lon + 0.1}`);
+        const data = await res.json();
+        if (data.states) {
+          aircrafts = data.states.map(s => ({
+            callsign: s[1],
+            lat: s[6],
+            lon: s[5],
+            type: s[8]
+          })).filter(a => a.lat && a.lon);
+        }
+      } catch (e) {
+        console.error("Error fetching aircrafts", e);
+      }
+      setTimeout(fetchRealAircrafts, 10000);
     }
   </script>
 </body>
