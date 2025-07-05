@@ -1,4 +1,4 @@
-          <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -48,6 +48,7 @@
       border: 1px solid lime;
       border-radius: 8px;
       z-index: 10;
+      white-space: pre-line;
     }
   </style>
 </head>
@@ -61,14 +62,11 @@
     <button onclick="startND()">Afficher ND</button>
   </div>
   <div id="info"></div>
-
   <canvas id="ndCanvas" width="512" height="512"></canvas>
-
   <audio id="traffic" src="traffic.mp3"></audio>
   <audio id="descend" src="descend.mp3"></audio>
   <audio id="cnow" src="cnow.mp3"></audio>
   <audio id="dnow" src="dnow.mp3"></audio>
-
   <script>
     const canvas = document.getElementById('ndCanvas');
     const ctx = canvas.getContext('2d');
@@ -88,7 +86,7 @@
       }
       if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', (event) => {
-          heading = event.alpha || 0;
+          heading = event.webkitCompassHeading || event.alpha || 0;
         });
       }
     }
@@ -121,7 +119,7 @@
         if (coord) waypoints.push(coord);
       }
       fetchRealAircrafts();
-      drawND();
+      setInterval(drawND, 1000);
     }
 
     function degToRad(deg) {
@@ -138,23 +136,21 @@
 
     function drawND() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       const centerX = canvas.width / 2;
       const centerY = canvas.height;
-      const scale = 10000; // scale factor
-      const maxDist = 10000; // 10km ND radius
+      const scale = 10000; // 10km ND
 
-      // Draw rose arc
-      for (let r = 60; r <= 180; r += 60) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.setLineDash([5, 3]);
+      // Draw arc
+      [60, 120, 180].forEach(r => {
+        ctx.setLineDash([r === 180 ? 1 : 4, 4]);
+        ctx.strokeStyle = 'white';
         ctx.beginPath();
         ctx.arc(centerX, centerY, r, Math.PI, 2 * Math.PI);
         ctx.stroke();
-      }
+      });
       ctx.setLineDash([]);
 
-      // Heading scale with labels
+      // Heading rose
       for (let deg = 0; deg < 360; deg += 10) {
         const angle = degToRad(deg - heading);
         const x = centerX + 180 * Math.sin(angle);
@@ -163,7 +159,7 @@
         ctx.fillText(deg.toString().padStart(3, '0'), x - 8, y);
       }
 
-      // Draw aircraft triangle
+      // Triangle
       ctx.fillStyle = 'yellow';
       ctx.beginPath();
       ctx.moveTo(centerX, centerY - 20);
@@ -172,58 +168,46 @@
       ctx.closePath();
       ctx.fill();
 
-      // Draw route to waypoints
       if (waypoints.length > 0) {
         ctx.strokeStyle = 'lime';
-        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
-
-        let prev = currentPos;
-        for (let i = 0; i < waypoints.length; i++) {
-          const dx = (waypoints[i].lon - currentPos.lon) * scale;
-          const dy = (waypoints[i].lat - currentPos.lat) * -scale;
-          const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
-          const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
-          ctx.lineTo(centerX + rotatedX, centerY + rotatedY);
-        }
+        waypoints.forEach(wp => {
+          const dx = (wp.lon - currentPos.lon) * scale;
+          const dy = (wp.lat - currentPos.lat) * -scale;
+          const x = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+          const y = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
+          ctx.lineTo(centerX + x, centerY + y);
+        });
         ctx.stroke();
 
-        // Draw waypoints with names
-        for (let i = 0; i < waypoints.length; i++) {
-          const dx = (waypoints[i].lon - currentPos.lon) * scale;
-          const dy = (waypoints[i].lat - currentPos.lat) * -scale;
-          const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
-          const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
-
+        waypoints.forEach((wp, i) => {
+          const dx = (wp.lon - currentPos.lon) * scale;
+          const dy = (wp.lat - currentPos.lat) * -scale;
+          const x = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+          const y = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
           ctx.beginPath();
-          ctx.arc(centerX + rotatedX, centerY + rotatedY, 4, 0, 2 * Math.PI);
+          ctx.arc(centerX + x, centerY + y, 4, 0, 2 * Math.PI);
           ctx.fillStyle = i === currentWaypointIndex ? 'white' : 'lime';
           ctx.fill();
-
-          ctx.fillText(waypoints[i].name, centerX + rotatedX + 5, centerY + rotatedY);
-
-          // Check if reached
+          ctx.fillText(wp.name, centerX + x + 6, centerY + y);
           if (i === currentWaypointIndex) {
-            const dist = getDistance(currentPos.lat, currentPos.lon, waypoints[i].lat, waypoints[i].lon);
+            const dist = getDistance(currentPos.lat, currentPos.lon, wp.lat, wp.lon);
             if (dist < 5) currentWaypointIndex++;
-            const speed = 15; // m/s (simu)
+            const speed = 15;
             const eta = new Date(Date.now() + dist / speed * 1000).toLocaleTimeString();
-            infoDiv.innerText = `NEXT: ${waypoints[i].name}\nDIST: ${dist.toFixed(0)}m\nETA: ${eta}`;
+            infoDiv.innerText = `NEXT: ${wp.name}\nDIST: ${dist.toFixed(0)}m\nETA: ${eta}`;
           }
-        }
+        });
       }
 
-      // Draw real aircrafts
       aircrafts.forEach(ac => {
         const dx = (ac.lon - currentPos.lon) * scale;
         const dy = (ac.lat - currentPos.lat) * -scale;
-        const rotatedX = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
-        const rotatedY = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
-
+        const x = dx * Math.cos(degToRad(-heading)) - dy * Math.sin(degToRad(-heading));
+        const y = dx * Math.sin(degToRad(-heading)) + dy * Math.cos(degToRad(-heading));
         const dist = getDistance(currentPos.lat, currentPos.lon, ac.lat, ac.lon);
-        if (dist > maxDist) return;
-
+        if (dist > 10000) return;
         let color = 'blue';
         if (dist < 50) {
           color = 'yellow';
@@ -232,23 +216,19 @@
         if (dist < 20) {
           color = 'red';
           const who = Math.random() < 0.5;
-          (who ? document.getElementById('dnow') : document.getElementById('cnow')).play();
+          document.getElementById(who ? 'dnow' : 'cnow').play();
         }
-
         ctx.strokeStyle = color;
         ctx.beginPath();
-        ctx.moveTo(centerX + rotatedX, centerY + rotatedY - 5);
-        ctx.lineTo(centerX + rotatedX - 5, centerY + rotatedY);
-        ctx.lineTo(centerX + rotatedX, centerY + rotatedY + 5);
-        ctx.lineTo(centerX + rotatedX + 5, centerY + rotatedY);
+        ctx.moveTo(centerX + x, centerY + y - 5);
+        ctx.lineTo(centerX + x - 5, centerY + y);
+        ctx.lineTo(centerX + x, centerY + y + 5);
+        ctx.lineTo(centerX + x + 5, centerY + y);
         ctx.closePath();
         ctx.stroke();
-
         ctx.fillStyle = color;
-        ctx.fillText(ac.callsign || 'UNK', centerX + rotatedX + 8, centerY + rotatedY - 5);
+        ctx.fillText(`${ac.callsign || 'UNK'} ${ac.type || ''}`, centerX + x + 6, centerY + y);
       });
-
-      requestAnimationFrame(drawND);
     }
 
     async function fetchRealAircrafts() {
@@ -256,15 +236,10 @@
         const res = await fetch(`https://opensky-network.org/api/states/all?lamin=${currentPos.lat - 0.1}&lomin=${currentPos.lon - 0.1}&lamax=${currentPos.lat + 0.1}&lomax=${currentPos.lon + 0.1}`);
         const data = await res.json();
         if (data.states) {
-          aircrafts = data.states.map(s => ({
-            callsign: s[1],
-            lat: s[6],
-            lon: s[5],
-            type: s[8]
-          })).filter(a => a.lat && a.lon);
+          aircrafts = data.states.map(s => ({ callsign: s[1], lat: s[6], lon: s[5], type: s[8] })).filter(a => a.lat && a.lon);
         }
       } catch (e) {
-        console.error("Error fetching aircrafts", e);
+        console.error("Aircraft fetch error", e);
       }
       setTimeout(fetchRealAircrafts, 10000);
     }
