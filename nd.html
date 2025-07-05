@@ -107,7 +107,7 @@
     }
 
     async function fetchRealFlights() {
-      const d = 0.01;
+      const d = 0.09;
       const url = `https://opensky-network.org/api/states/all?lamin=${currentPos.lat - d}&lomin=${currentPos.lon - d}&lamax=${currentPos.lat + d}&lomax=${currentPos.lon + d}`;
       try {
         const res = await fetch(url);
