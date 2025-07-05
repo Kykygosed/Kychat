@@ -36,29 +36,73 @@
       padding: 4px;
       font-family: monospace;
     }
+    #infos {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
+      border: 1px solid white;
+      border-radius: 8px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
   <div id="controls">
-    <button id="gpsBtn">Activer GPS + Cap</button><br />
+    <button onclick="requestPermissions()">Activer GPS + Cap</button><br />
     <div id="waypointInputs">
       <input type="text" placeholder="Waypoint 1" /><br />
     </div>
-    <button id="addBtn">+</button>
-    <button id="startBtn">Afficher ND</button>
+    <button onclick="addWaypointInput()">+</button>
+    <button onclick="startND()">Afficher ND</button>
   </div>
-
+  <div id="infos"></div>
   <canvas id="ndCanvas" width="512" height="512"></canvas>
+
+  <audio id="traffic" src="traffic.mp3"></audio>
+  <audio id="descend" src="descend.mp3"></audio>
+  <audio id="dnow" src="dnow.mp3"></audio>
+  <audio id="cnow" src="cnow.mp3"></audio>
 
   <script>
     const canvas = document.getElementById('ndCanvas');
     const ctx = canvas.getContext('2d');
+    const infos = document.getElementById('infos');
+    const audio = {
+      traffic: document.getElementById('traffic'),
+      descend: document.getElementById('descend'),
+      dnow: document.getElementById('dnow'),
+      cnow: document.getElementById('cnow')
+    };
+
     let heading = 0;
     let currentPos = { lat: 48.8566, lon: 2.3522 };
     let waypoints = [];
-    let destinationPath = [];
+    let activeWaypointIndex = 0;
 
-    document.getElementById("gpsBtn").addEventListener("click", () => {
+    const EARTH_RADIUS = 6371000; // in meters
+
+    function toRadians(deg) {
+      return deg * Math.PI / 180;
+    }
+
+    function getDistance(p1, p2) {
+      const dLat = toRadians(p2.lat - p1.lat);
+      const dLon = toRadians(p2.lon - p1.lon);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRadians(p1.lat)) * Math.cos(toRadians(p2.lat)) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return EARTH_RADIUS * c;
+    }
+
+    function getETA(distance) {
+      const speed = 250 / 3.6; // m/s ~ 900km/h
+      const eta = new Date(Date.now() + (distance / speed) * 1000);
+      return eta.toTimeString().substring(0, 5);
+    }
+
+    function requestPermissions() {
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition(pos => {
           currentPos.lat = pos.coords.latitude;
@@ -66,53 +110,47 @@
         });
       }
       if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', event => {
-          if (event.alpha !== null) {
-            heading = 360 - event.alpha;
-          }
-        }, true);
+        window.addEventListener('deviceorientation', (event) => {
+          heading = event.alpha || 0;
+        });
       }
-    });
+    }
 
-    document.getElementById("addBtn").addEventListener("click", () => {
+    function addWaypointInput() {
       const div = document.getElementById('waypointInputs');
       const input = document.createElement('input');
       input.type = 'text';
-      input.placeholder = 'Waypoint ' + (div.querySelectorAll('input').length + 1);
+      input.placeholder = 'Waypoint ' + (div.children.length / 2 + 1);
       div.appendChild(input);
       div.appendChild(document.createElement('br'));
-    });
+    }
 
     async function getWaypointCoordinates(name) {
       const res = await fetch('https://kykychat-24c7f-default-rtdb.firebaseio.com/waypoints.json');
       const data = await res.json();
       for (const key in data) {
         if (data[key].name.toLowerCase() === name.toLowerCase()) {
-          return { lat: data[key].lat, lon: data[key].lon };
+          return { lat: data[key].lat, lon: data[key].lon, name: data[key].name };
         }
       }
       return null;
     }
 
-    document.getElementById("startBtn").addEventListener("click", async () => {
+    async function startND() {
       const inputs = document.querySelectorAll('#waypointInputs input');
       waypoints = [];
       for (const input of inputs) {
         const coord = await getWaypointCoordinates(input.value);
         if (coord) waypoints.push(coord);
       }
-    });
-
-    function toXY(lat, lon) {
-      const dx = (lon - currentPos.lon) * 60000;
-      const dy = (lat - currentPos.lat) * -60000;
-      return { x: dx, y: dy };
+      activeWaypointIndex = 0;
+      drawND();
     }
 
     function drawND() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const centerX = canvas.width / 2;
-      const centerY = canvas.height - 40;
+      const centerY = canvas.height;
       const radius = 180;
 
       ctx.strokeStyle = '#00ffff';
@@ -124,12 +162,11 @@
       }
 
       ctx.fillStyle = '#00ffff';
-      for (let deg = 0; deg < 360; deg += 30) {
+      for (let deg = 0; deg <= 360; deg += 30) {
         const angle = (deg - heading) * Math.PI / 180;
         const x = centerX + radius * Math.sin(angle);
         const y = centerY - radius * Math.cos(angle);
-        const txt = (deg / 10).toString().padStart(2, '0');
-        ctx.fillText(txt, x - 5, y);
+        ctx.fillText((deg / 10).toString().padStart(2, '0'), x - 5, y);
       }
 
       ctx.fillStyle = 'yellow';
@@ -141,32 +178,40 @@
       ctx.fill();
 
       if (waypoints.length > 0) {
+        let prev = currentPos;
         ctx.strokeStyle = 'lime';
         ctx.lineWidth = 2;
         ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
 
-        let prev = currentPos;
-        let { x: px, y: py } = toXY(prev.lat, prev.lon);
-        ctx.moveTo(centerX + px, centerY + py);
-
-        for (let i = 0; i < waypoints.length; i++) {
-          let { x, y } = toXY(waypoints[i].lat, waypoints[i].lon);
-          ctx.lineTo(centerX + x, centerY + y);
+        for (let i = activeWaypointIndex; i < waypoints.length; i++) {
+          const dx = (waypoints[i].lon - currentPos.lon) * 100000;
+          const dy = (waypoints[i].lat - currentPos.lat) * -100000;
+          ctx.lineTo(centerX + dx, centerY + dy);
+          prev = waypoints[i];
         }
         ctx.stroke();
 
-        ctx.fillStyle = '#00ffff';
-        for (let i = 0; i < waypoints.length; i++) {
-          let { x, y } = toXY(waypoints[i].lat, waypoints[i].lon);
+        for (let i = activeWaypointIndex; i < waypoints.length; i++) {
+          const dx = (waypoints[i].lon - currentPos.lon) * 100000;
+          const dy = (waypoints[i].lat - currentPos.lat) * -100000;
           ctx.beginPath();
-          ctx.arc(centerX + x, centerY + y, 4, 0, 2 * Math.PI);
+          ctx.arc(centerX + dx, centerY + dy, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = (i === activeWaypointIndex) ? 'white' : 'lime';
           ctx.fill();
+          ctx.fillStyle = (i === activeWaypointIndex) ? 'white' : 'lime';
+          ctx.fillText(waypoints[i].name, centerX + dx + 6, centerY + dy);
         }
+
+        const distToNext = getDistance(currentPos, waypoints[activeWaypointIndex]);
+        if (distToNext < 5 && activeWaypointIndex < waypoints.length - 1) activeWaypointIndex++;
+
+        infos.innerText = `NEXT: ${waypoints[activeWaypointIndex].name}\nDIST: ${distToNext.toFixed(1)} m\nETA: ${getETA(distToNext)}`;
       }
+
       requestAnimationFrame(drawND);
     }
-
-    drawND();
   </script>
 </body>
-</html>
+  </html>
+  
